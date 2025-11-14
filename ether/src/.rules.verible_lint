@@ -1,0 +1,7 @@
+-explicit-parameter-storage-type
+-case-missing-default
+-unpacked-dimensions-range-ordering
+-no-tabs
+-line-length
+-parameter-name-style
+-module-filename
