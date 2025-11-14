@@ -16,7 +16,6 @@ module mii (
 endmodule
 
 module mii_loopback (
-    // RX side from PHY
     // input       rx_clk,
     input clk,
     input rst_n,
@@ -33,18 +32,18 @@ module mii_loopback (
     output act
 );
 
-  // 単純にレジスタで受け取って TX クロックで再送
   reg [3:0] txd_reg;
   reg       tx_en_reg;
 
   assign txd   = txd_reg;
   assign tx_en = tx_en_reg;
 
-  // 受信データを内部バッファへ（rx_clk ドメイン）
-  reg [3:0] rxd_buf;
-  reg       dv_buf;
+  reg [ 3:0] rxd_buf;
+  reg        dv_buf;
 
-  assign act = !link & (dv_buf | tx_en_reg);
+  reg [31:0] act_counter;
+  reg        act_reg;
+  assign act = act_reg;
 
   always @(posedge clk) begin
     if (!rst_n) begin
@@ -52,12 +51,33 @@ module mii_loopback (
       dv_buf    <= 1'b0;
       txd_reg   <= 4'b0000;
       tx_en_reg <= 1'b0;
+      act_counter <= 32'd0;
+      act_reg <= 1'b0;
     end else begin
       rxd_buf <= rxd;
       dv_buf <= rx_dv;
 
       txd_reg <= rxd_buf;
       tx_en_reg <= dv_buf;
+
+      // act counter
+      if (dv_buf) begin
+        act_counter <= 32'd0;
+      end else begin
+        if (act_counter < 32'hFFFFFFFF) begin
+          act_counter <= act_counter + 1'b1;
+        end else begin
+          act_counter <= 32'hFFFFFFFF;
+        end
+      end
+
+      // act signal
+      if (!link && (act_counter < 32'd2500000)) begin
+        act_reg <= 1'b1;
+      end else begin
+        act_reg <= 1'b0;
+      end
+
     end
   end
 
