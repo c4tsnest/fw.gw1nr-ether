@@ -1,81 +1,143 @@
 module mii (
-    input clk,
-    input rst_n,
-    output reg link
-);
-
-  reg [24:0] counter;
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-    end else begin
-
-    end
-  end
-
-endmodule
-
-module mii_loopback (
     // input       rx_clk,
     input clk,
     input rst_n,
 
-    input [3:0] rxd,
-    input       rx_dv,
-    input       rx_er,
-    input       link,
-
+    input  [3:0] rxd_a,
+    input        rx_dv_a,
+    input        rx_er_a,
+    input        link_a,
     // input        tx_clk,
-    output [3:0] txd,
-    output       tx_en,
+    output [3:0] txd_a,
+    output       tx_en_a,
+    output       act_a,
 
-    output act
+    input  [3:0] rxd_b,
+    input        rx_dv_b,
+    input        rx_er_b,
+    input        link_b,
+    output [3:0] txd_b,
+    output       tx_en_b,
+    output       act_b,
+
+    input  [3:0] rxd_c,
+    input        rx_dv_c,
+    input        rx_er_c,
+    input        link_c,
+    output [3:0] txd_c,
+    output       tx_en_c,
+    output       act_c
 );
 
-  reg [3:0] txd_reg;
-  reg       tx_en_reg;
+  reg [ 3:0] txd_reg_a;
+  reg        tx_en_reg_a;
+  reg [ 3:0] rxd_buf_a;
+  reg        dv_buf_a;
+  reg [31:0] act_counter_a;
+  reg        act_reg_a;
+  assign txd_a   = txd_reg_a;
+  assign tx_en_a = tx_en_reg_a;
+  assign act_a   = act_reg_a;
 
-  assign txd   = txd_reg;
-  assign tx_en = tx_en_reg;
+  reg [ 3:0] txd_reg_b;
+  reg        tx_en_reg_b;
+  reg [ 3:0] rxd_buf_b;
+  reg        dv_buf_b;
+  reg [31:0] act_counter_b;
+  reg        act_reg_b;
+  assign txd_b   = txd_reg_b;
+  assign tx_en_b = tx_en_reg_b;
+  assign act_b   = act_reg_b;
 
-  reg [ 3:0] rxd_buf;
-  reg        dv_buf;
-
-  reg [31:0] act_counter;
-  reg        act_reg;
-  assign act = act_reg;
+  reg [ 3:0] txd_reg_c;
+  reg        tx_en_reg_c;
+  reg [ 3:0] rxd_buf_c;
+  reg        dv_buf_c;
+  reg [31:0] act_counter_c;
+  reg        act_reg_c;
+  assign txd_c   = txd_reg_c;
+  assign tx_en_c = tx_en_reg_c;
+  assign act_c   = act_reg_c;
 
   always @(posedge clk) begin
     if (!rst_n) begin
-      rxd_buf   <= 4'b0000;
-      dv_buf    <= 1'b0;
-      txd_reg   <= 4'b0000;
-      tx_en_reg <= 1'b0;
-      act_counter <= 32'd0;
-      act_reg <= 1'b0;
-    end else begin
-      rxd_buf <= rxd;
-      dv_buf <= rx_dv;
+      rxd_buf_a   <= 4'b0000;
+      dv_buf_a    <= 1'b0;
+      txd_reg_a   <= 4'b0000;
+      tx_en_reg_a <= 1'b0;
+      act_counter_a <= 32'd0;
+      act_reg_a <= 1'b0;
 
-      txd_reg <= rxd_buf;
-      tx_en_reg <= dv_buf;
+      rxd_buf_b   <= 4'b0000;
+      dv_buf_b    <= 1'b0;
+      txd_reg_b   <= 4'b0000;
+      tx_en_reg_b <= 1'b0;
+      act_counter_b <= 32'd0;
+      act_reg_b <= 1'b0;
+
+      rxd_buf_c   <= 4'b0000;
+      dv_buf_c    <= 1'b0;
+      txd_reg_c   <= 4'b0000;
+      tx_en_reg_c <= 1'b0;
+      act_counter_c <= 32'd0;
+      act_reg_c <= 1'b0;
+    end else begin
+      rxd_buf_a <= rxd_a;
+      dv_buf_a <= rx_dv_a;
+      rxd_buf_b <= rxd_b;
+      dv_buf_b <= rx_dv_b;
+      rxd_buf_c <= rxd_c;
+      dv_buf_c <= rx_dv_c;
+
+      txd_reg_b <= rxd_buf_c;
+      tx_en_reg_b <= dv_buf_c;
+      txd_reg_c <= rxd_buf_b;
+      tx_en_reg_c <= dv_buf_b;
 
       // act counter
-      if (dv_buf) begin
-        act_counter <= 32'd0;
+      if (dv_buf_a) begin
+        act_counter_a <= 32'd0;
       end else begin
-        if (act_counter < 32'hFFFFFFFF) begin
-          act_counter <= act_counter + 1'b1;
+        if (act_counter_a < 32'hFFFFFFFF) begin
+          act_counter_a <= act_counter_a + 1'b1;
         end else begin
-          act_counter <= 32'hFFFFFFFF;
+          act_counter_a <= 32'hFFFFFFFF;
+        end
+      end
+      if (dv_buf_b) begin
+        act_counter_b <= 32'd0;
+      end else begin
+        if (act_counter_b < 32'hFFFFFFFF) begin
+          act_counter_b <= act_counter_b + 1'b1;
+        end else begin
+          act_counter_b <= 32'hFFFFFFFF;
+        end
+      end
+      if (dv_buf_c) begin
+        act_counter_c <= 32'd0;
+      end else begin
+        if (act_counter_c < 32'hFFFFFFFF) begin
+          act_counter_c <= act_counter_c + 1'b1;
+        end else begin
+          act_counter_c <= 32'hFFFFFFFF;
         end
       end
 
       // act signal
-      if (!link && (act_counter < 32'd2500000)) begin
-        act_reg <= 1'b1;
+      if (!link_a && (act_counter_a < 32'd2500000)) begin
+        act_reg_a <= 1'b1;
       end else begin
-        act_reg <= 1'b0;
+        act_reg_a <= 1'b0;
+      end
+      if (!link_b && (act_counter_b < 32'd2500000)) begin
+        act_reg_b <= 1'b1;
+      end else begin
+        act_reg_b <= 1'b0;
+      end
+      if (!link_c && (act_counter_c < 32'd2500000)) begin
+        act_reg_c <= 1'b1;
+      end else begin
+        act_reg_c <= 1'b0;
       end
 
     end
