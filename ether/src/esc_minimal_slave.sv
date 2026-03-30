@@ -26,6 +26,8 @@ module esc_minimal_slave #(
   localparam logic [7:0] CMD_BRW  = 8'h09;
 
   localparam int unsigned REG_STATION_ADDR = 16'h0010;
+  localparam int unsigned REG_PORTDES      = 16'h0007;
+  localparam int unsigned REG_ESCSUP       = 16'h0008;
   localparam int unsigned REG_DL_STATUS    = 16'h0110;
   localparam int unsigned REG_AL_CONTROL   = 16'h0120;
   localparam int unsigned REG_AL_STATUS    = 16'h0130;
@@ -36,6 +38,8 @@ module esc_minimal_slave #(
   localparam int unsigned REG_DC_TIME      = 16'h0910;
   localparam int unsigned REG_GPIO_OUT     = 16'h0f00;
   localparam int unsigned REG_GPIO_IN      = 16'h0f10;
+
+  localparam logic [15:0] DLSTATUS_PORT0_LINK = 16'h0200;
 
   localparam int unsigned GPIO_OUT_BYTES = (GPIO_OUT_WIDTH + 7) / 8;
   localparam int unsigned GPIO_IN_BYTES = (GPIO_IN_WIDTH + 7) / 8;
@@ -147,8 +151,9 @@ module esc_minimal_slave #(
 
       reg_mem[16'h0000] <= 8'h11;
       reg_mem[16'h0001] <= 8'h01;
-      reg_mem[16'h0008] <= 8'h34;
-      reg_mem[16'h0009] <= 8'h12;
+      reg_mem[REG_PORTDES] <= 8'h01;
+      reg_mem[REG_ESCSUP] <= 8'h04;
+      reg_mem[REG_ESCSUP + 1] <= 8'h00;
       reg_mem[16'h000a] <= 8'h00;
       reg_mem[16'h000b] <= 8'h00;
       reg_mem[16'h000c] <= 8'h01;
@@ -210,7 +215,13 @@ module esc_minimal_slave #(
       push_now = 1'b0;
       pop_now = 1'b0;
 
-      reg_mem[REG_DL_STATUS] <= {7'b0, link_up};
+      if (link_up) begin
+        reg_mem[REG_DL_STATUS] <= DLSTATUS_PORT0_LINK[7:0];
+        reg_mem[REG_DL_STATUS + 1] <= DLSTATUS_PORT0_LINK[15:8];
+      end else begin
+        reg_mem[REG_DL_STATUS] <= 8'h00;
+        reg_mem[REG_DL_STATUS + 1] <= 8'h00;
+      end
       reg_mem[REG_AL_STATUS] <= {4'b0, al_state};
       reg_mem[REG_AL_STATUS_CD] <= al_status_code[7:0];
       reg_mem[REG_AL_STATUS_CD+1] <= al_status_code[15:8];

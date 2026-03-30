@@ -153,6 +153,71 @@ module tb_esc_minimal;
     end
   endtask
 
+  task automatic send_ecat_single_datagram8(
+      input logic [7:0] cmd,
+      input logic [15:0] adp,
+      input logic [15:0] ado,
+      input int unsigned payload_len,
+      input logic [7:0] payload0,
+      input logic [7:0] payload1,
+      input logic [7:0] payload2,
+      input logic [7:0] payload3,
+      input logic [7:0] payload4,
+      input logic [7:0] payload5,
+      input logic [7:0] payload6,
+      input logic [7:0] payload7
+  );
+    logic [15:0] ecat_len;
+    logic [15:0] dlen_field;
+    begin
+      ecat_len = 16'(10 + payload_len + 2);
+      dlen_field = payload_len[15:0];
+
+      send_byte(8'h01);
+      send_byte(8'h02);
+      send_byte(8'h03);
+      send_byte(8'h04);
+      send_byte(8'h05);
+      send_byte(8'h06);
+      send_byte(8'h10);
+      send_byte(8'h20);
+      send_byte(8'h30);
+      send_byte(8'h40);
+      send_byte(8'h50);
+      send_byte(8'h60);
+      send_byte(8'h88);
+      send_byte(8'hA4);
+
+      send_byte(ecat_len[7:0]);
+      send_byte({4'h1, ecat_len[10:8]});
+
+      send_byte(cmd);
+      send_byte(8'h01);
+      send_byte(adp[7:0]);
+      send_byte(adp[15:8]);
+      send_byte(ado[7:0]);
+      send_byte(ado[15:8]);
+      send_byte(dlen_field[7:0]);
+      send_byte({5'b00000, dlen_field[10:8]});
+      send_byte(8'h00);
+      send_byte(8'h00);
+
+      if (payload_len > 0) send_byte(payload0);
+      if (payload_len > 1) send_byte(payload1);
+      if (payload_len > 2) send_byte(payload2);
+      if (payload_len > 3) send_byte(payload3);
+      if (payload_len > 4) send_byte(payload4);
+      if (payload_len > 5) send_byte(payload5);
+      if (payload_len > 6) send_byte(payload6);
+      if (payload_len > 7) send_byte(payload7);
+
+      send_byte(8'h00);
+      send_byte(8'h00);
+
+      end_frame();
+    end
+  endtask
+
   task automatic expect_eq8(
       input logic [7:0] got,
       input logic [7:0] exp,
@@ -235,6 +300,87 @@ module tb_esc_minimal;
     expect_eq8(rx_resp[18], 8'h00, "ADP low decremented");
     expect_eq8(rx_resp[19], 8'h00, "ADP high decremented");
     expect_eq8(rx_resp[27], 8'h00, "WKC low no-match APRD");
+
+    $display("TEST6: SOEM-like BRD TYPE detect-slaves path");
+    clear_capture();
+    send_ecat_single_datagram(8'h07, 16'h0000, 16'h0000, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 30, "response length for BRD TYPE");
+    expect_eq8(rx_resp[26], 8'h11, "TYPE low byte");
+    expect_eq8(rx_resp[27], 8'h01, "TYPE high byte");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low BRD TYPE");
+
+    $display("TEST7: SOEM-like APWR/APRD/FPRD STADR config addressing");
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0010, 2, 8'h01, 8'h10, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 30, "response length for APWR STADR");
+    expect_eq8(rx_resp[28], 8'h02, "WKC low APWR STADR");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0010, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 30, "response length for APRD STADR");
+    expect_eq8(rx_resp[26], 8'h01, "APRD STADR low");
+    expect_eq8(rx_resp[27], 8'h10, "APRD STADR high");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low APRD STADR");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0010, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 30, "response length for FPRD STADR");
+    expect_eq8(rx_resp[26], 8'h01, "FPRD STADR low");
+    expect_eq8(rx_resp[27], 8'h10, "FPRD STADR high");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low FPRD STADR");
+
+    $display("TEST8: SOEM-like BWR reset block and FPRD verify");
+    clear_capture();
+    send_ecat_single_datagram8(8'h08, 16'h0000, 16'h0800, 8,
+                   8'hAA, 8'h55, 8'h12, 8'h34,
+                   8'hDE, 8'hAD, 8'hBE, 8'hEF);
+    wait_tx_idle();
+    expect_true(resp_len >= 36, "response length for BWR 8-byte");
+    expect_eq8(rx_resp[34], 8'h02, "WKC low BWR 8-byte");
+
+    clear_capture();
+    send_ecat_single_datagram8(8'h04, 16'h1001, 16'h0800, 8,
+                   8'h00, 8'h00, 8'h00, 8'h00,
+                   8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 36, "response length for FPRD 8-byte");
+    expect_eq8(rx_resp[26], 8'hAA, "FPRD block byte0");
+    expect_eq8(rx_resp[27], 8'h55, "FPRD block byte1");
+    expect_eq8(rx_resp[28], 8'h12, "FPRD block byte2");
+    expect_eq8(rx_resp[29], 8'h34, "FPRD block byte3");
+    expect_eq8(rx_resp[30], 8'hDE, "FPRD block byte4");
+    expect_eq8(rx_resp[31], 8'hAD, "FPRD block byte5");
+    expect_eq8(rx_resp[32], 8'hBE, "FPRD block byte6");
+    expect_eq8(rx_resp[33], 8'hEF, "FPRD block byte7");
+    expect_eq8(rx_resp[34], 8'h01, "WKC low FPRD 8-byte");
+
+    $display("TEST9: SOEM-like ESC capability and topology fields");
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0008, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 30, "response length for FPRD ESCSUP");
+    expect_eq8(rx_resp[26], 8'h04, "ESCSUP low (DC support bit)");
+    expect_eq8(rx_resp[27], 8'h00, "ESCSUP high");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low FPRD ESCSUP");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0007, 1, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 29, "response length for FPRD PORTDES");
+    expect_eq8(rx_resp[26], 8'h01, "PORTDES low");
+    expect_eq8(rx_resp[27], 8'h01, "WKC low FPRD PORTDES");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0110, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 30, "response length for FPRD DLSTATUS");
+    expect_eq8(rx_resp[26], 8'h00, "DLSTATUS low");
+    expect_eq8(rx_resp[27], 8'h02, "DLSTATUS high (port0 link active)");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low FPRD DLSTATUS");
 
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);
