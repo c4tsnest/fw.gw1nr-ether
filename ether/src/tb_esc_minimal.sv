@@ -205,7 +205,7 @@ module tb_esc_minimal;
     send_ecat_single_datagram(8'h02, 16'h0000, 16'h0120, 1, 8'h02, 8'h00, 8'h00, 8'h00);
     wait_tx_idle();
     expect_true(resp_len >= 29, "response length for APWR");
-    expect_eq8(rx_resp[27], 8'h01, "WKC low APWR");
+    expect_eq8(rx_resp[27], 8'h02, "WKC low APWR");
 
     clear_capture();
     send_ecat_single_datagram(8'h01, 16'h0000, 16'h0130, 1, 8'h00, 8'h00, 8'h00, 8'h00);
@@ -226,6 +226,15 @@ module tb_esc_minimal;
     expect_true(resp_len >= 32, "response length for DC read");
     expect_true({rx_resp[29], rx_resp[28], rx_resp[27], rx_resp[26]} != 32'h0000_0000,
                 "dc time non-zero");
+
+    $display("TEST5: APRD auto-increment ADP decrement and no hit WKC");
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0001, 16'h0130, 1, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 29, "response length for APRD ADP=1");
+    expect_eq8(rx_resp[18], 8'h00, "ADP low decremented");
+    expect_eq8(rx_resp[19], 8'h00, "ADP high decremented");
+    expect_eq8(rx_resp[27], 8'h00, "WKC low no-match APRD");
 
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);

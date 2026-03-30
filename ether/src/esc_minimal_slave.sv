@@ -41,6 +41,13 @@ module esc_minimal_slave #(
   localparam int unsigned GPIO_IN_BYTES = (GPIO_IN_WIDTH + 7) / 8;
   localparam int unsigned TX_FIFO_DEPTH = 8;
 
+  typedef enum logic [1:0] {
+    REG_NONE = 2'b00,
+    REG_R = 2'b01,
+    REG_W = 2'b10,
+    REG_RW = 2'b11
+  } reg_access_t;
+
   logic [7:0] reg_mem[0:REG_SPACE_BYTES-1];
   logic [7:0] tx_fifo[0:TX_FIFO_DEPTH-1];
 
@@ -77,6 +84,9 @@ module esc_minimal_slave #(
   logic addr_match;
   logic do_read;
   logic do_write;
+  logic is_auto_inc_cmd;
+  logic adp_dec_borrow;
+  logic [1:0] wkc_inc_value;
   logic wkc_carry;
 
   integer i;
@@ -88,6 +98,34 @@ module esc_minimal_slave #(
 
   function automatic logic [15:0] reg_rd16(input int unsigned addr);
     reg_rd16 = {reg_rd8(addr + 1), reg_rd8(addr)};
+  endfunction
+
+  function automatic reg_access_t reg_access(input int unsigned addr);
+    reg_access = REG_RW;
+
+    if ((addr >= REG_DC_BASE) && (addr <= REG_DC_END)) begin
+      reg_access = REG_R;
+    end
+    if (addr == REG_DL_STATUS) begin
+      reg_access = REG_R;
+    end
+    if (addr == REG_AL_STATUS) begin
+      reg_access = REG_R;
+    end
+    if ((addr == REG_AL_STATUS_CD) || (addr == (REG_AL_STATUS_CD + 1))) begin
+      reg_access = REG_R;
+    end
+    if ((addr >= REG_GPIO_IN) && (addr < (REG_GPIO_IN + GPIO_IN_BYTES))) begin
+      reg_access = REG_R;
+    end
+  endfunction
+
+  function automatic logic reg_can_read(input int unsigned addr);
+    reg_can_read = (reg_access(addr) == REG_R) || (reg_access(addr) == REG_RW);
+  endfunction
+
+  function automatic logic reg_can_write(input int unsigned addr);
+    reg_can_write = (reg_access(addr) == REG_W) || (reg_access(addr) == REG_RW);
   endfunction
 
   esc_al_fsm u_al_fsm (
@@ -157,6 +195,9 @@ module esc_minimal_slave #(
       addr_match <= 1'b0;
       do_read <= 1'b0;
       do_write <= 1'b0;
+      is_auto_inc_cmd <= 1'b0;
+      adp_dec_borrow <= 1'b0;
+      wkc_inc_value <= 2'd0;
       wkc_carry <= 1'b0;
 
       al_req_valid <= 1'b0;
@@ -200,6 +241,9 @@ module esc_minimal_slave #(
         addr_match <= 1'b0;
         do_read <= 1'b0;
         do_write <= 1'b0;
+        is_auto_inc_cmd <= 1'b0;
+        adp_dec_borrow <= 1'b0;
+        wkc_inc_value <= 2'd0;
         wkc_carry <= 1'b0;
         rx_half <= 1'b0;
       end
@@ -230,9 +274,52 @@ module esc_minimal_slave #(
 
           if (is_ethercat) begin
             case (byte_idx)
-              16'd16: cmd_reg <= rx_byte;
-              16'd18: adp_reg[7:0] <= rx_byte;
-              16'd19: adp_reg[15:8] <= rx_byte;
+              16'd16: begin
+                cmd_reg <= rx_byte;
+                case (rx_byte)
+                  CMD_APRD: begin
+                    is_auto_inc_cmd <= 1'b1;
+                    wkc_inc_value <= 2'd1;
+                  end
+                  CMD_APWR: begin
+                    is_auto_inc_cmd <= 1'b1;
+                    wkc_inc_value <= 2'd2;
+                  end
+                  CMD_APRW: begin
+                    is_auto_inc_cmd <= 1'b1;
+                    wkc_inc_value <= 2'd3;
+                  end
+                  CMD_FPRD, CMD_BRD: begin
+                    is_auto_inc_cmd <= 1'b0;
+                    wkc_inc_value <= 2'd1;
+                  end
+                  CMD_FPWR, CMD_BWR: begin
+                    is_auto_inc_cmd <= 1'b0;
+                    wkc_inc_value <= 2'd2;
+                  end
+                  CMD_FPRW, CMD_BRW: begin
+                    is_auto_inc_cmd <= 1'b0;
+                    wkc_inc_value <= 2'd3;
+                  end
+                  default: begin
+                    is_auto_inc_cmd <= 1'b0;
+                    wkc_inc_value <= 2'd0;
+                  end
+                endcase
+              end
+              16'd18: begin
+                adp_reg[7:0] <= rx_byte;
+                if (is_auto_inc_cmd) begin
+                  tx_byte = rx_byte - 8'h01;
+                  adp_dec_borrow <= (rx_byte == 8'h00);
+                end
+              end
+              16'd19: begin
+                adp_reg[15:8] <= rx_byte;
+                if (is_auto_inc_cmd) begin
+                  tx_byte = rx_byte - {7'd0, adp_dec_borrow};
+                end
+              end
               16'd20: ado_reg[7:0] <= rx_byte;
               16'd21: ado_reg[15:8] <= rx_byte;
               16'd22: dlen_reg[7:0] <= rx_byte;
@@ -301,13 +388,7 @@ module esc_minimal_slave #(
               byte_addr = ado_reg + (byte_idx - data_start_idx);
 
               if (do_write) begin
-                if ((byte_addr < REG_SPACE_BYTES) &&
-                    !((byte_addr == REG_DL_STATUS) ||
-                      (byte_addr == REG_AL_STATUS) ||
-                      (byte_addr == REG_AL_STATUS_CD) ||
-                      (byte_addr == (REG_AL_STATUS_CD + 1)) ||
-                      ((byte_addr >= REG_DC_BASE) && (byte_addr <= REG_DC_END)) ||
-                      ((byte_addr >= REG_GPIO_IN) && (byte_addr < (REG_GPIO_IN + GPIO_IN_BYTES))))) begin
+                if ((byte_addr < REG_SPACE_BYTES) && reg_can_write(byte_addr)) begin
                   reg_mem[byte_addr] <= rx_byte;
                 end
                 if (byte_addr == REG_AL_CONTROL) begin
@@ -322,13 +403,17 @@ module esc_minimal_slave #(
               end
 
               if (do_read) begin
-                tx_byte = reg_rd8(byte_addr);
+                if ((byte_addr < REG_SPACE_BYTES) && reg_can_read(byte_addr)) begin
+                  tx_byte = reg_rd8(byte_addr);
+                end else begin
+                  tx_byte = 8'h00;
+                end
               end
             end
 
             if (addr_match && (byte_idx == wkc_start_idx)) begin
-              tx_byte = rx_byte + 8'h01;
-              low_overflow = (rx_byte == 8'hff);
+              tx_byte = rx_byte + {6'd0, wkc_inc_value};
+              low_overflow = ({1'b0, rx_byte} + {7'd0, wkc_inc_value}) > 9'h0ff;
               wkc_carry <= low_overflow;
             end else if (addr_match && (byte_idx == (wkc_start_idx + 16'd1))) begin
               tx_byte = rx_byte + {7'd0, wkc_carry};
