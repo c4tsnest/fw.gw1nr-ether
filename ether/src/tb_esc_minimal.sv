@@ -17,6 +17,8 @@ module tb_esc_minimal;
 
   logic [7:0] rx_resp[MAX_BYTES-1:0];
   int resp_len;
+  logic cap_half;
+  logic [3:0] cap_low_nibble;
 
   esc_minimal_slave #(
       .REG_SPACE_BYTES(4096),
@@ -57,33 +59,42 @@ module tb_esc_minimal;
     end
   endtask
 
-  task automatic capture_response;
-    logic half;
-    logic [3:0] low_nibble;
+  task automatic clear_capture;
     begin
       resp_len = 0;
-      half = 1'b0;
-      low_nibble = 4'h0;
+      cap_half = 1'b0;
+      cap_low_nibble = 4'h0;
+    end
+  endtask
 
-      repeat (400) begin
+  task automatic wait_tx_idle;
+    int idle_cycles;
+    begin
+      idle_cycles = 0;
+      while (idle_cycles < 12) begin
         @(posedge clk);
-        if (tx_en) begin
-          if (!half) begin
-            low_nibble = txd;
-            half = 1'b1;
-          end else begin
-            if (resp_len < MAX_BYTES) begin
-              rx_resp[resp_len] = {txd, low_nibble};
-            end
-            resp_len = resp_len + 1;
-            half = 1'b0;
-          end
-        end else if (resp_len > 0) begin
-          disable capture_response;
-        end
+        if (tx_en) idle_cycles = 0;
+        else idle_cycles = idle_cycles + 1;
       end
     end
   endtask
+
+  always @(posedge clk) begin
+    if (tx_en) begin
+      if (!cap_half) begin
+        cap_low_nibble <= txd;
+        cap_half <= 1'b1;
+      end else begin
+        if (resp_len < MAX_BYTES) begin
+          rx_resp[resp_len] <= {txd, cap_low_nibble};
+        end
+        resp_len <= resp_len + 1;
+        cap_half <= 1'b0;
+      end
+    end else begin
+      cap_half <= 1'b0;
+    end
+  end
 
   task automatic send_ecat_single_datagram(
       input logic [7:0] cmd,
@@ -173,6 +184,7 @@ module tb_esc_minimal;
     link_up = 1'b0;
     rxd = 4'h0;
     rx_dv = 1'b0;
+    clear_capture();
 
     repeat (8) @(posedge clk);
     rst_n = 1'b1;
@@ -180,32 +192,37 @@ module tb_esc_minimal;
     repeat (8) @(posedge clk);
 
     $display("TEST1: APRD AL Status (expect INIT=0x01)");
+    clear_capture();
     send_ecat_single_datagram(8'h01, 16'h0000, 16'h0130, 1, 8'h00, 8'h00, 8'h00, 8'h00);
-    capture_response();
+    wait_tx_idle();
     expect_true(resp_len >= 29, "response length for APRD");
     expect_eq8(rx_resp[26], 8'h01, "AL status byte");
     wkc_index = 27;
     expect_eq8(rx_resp[wkc_index], 8'h01, "WKC low APRD");
 
     $display("TEST2: APWR AL Control PREOP then APRD AL Status");
+    clear_capture();
     send_ecat_single_datagram(8'h02, 16'h0000, 16'h0120, 1, 8'h02, 8'h00, 8'h00, 8'h00);
-    capture_response();
+    wait_tx_idle();
     expect_true(resp_len >= 29, "response length for APWR");
     expect_eq8(rx_resp[27], 8'h01, "WKC low APWR");
 
+    clear_capture();
     send_ecat_single_datagram(8'h01, 16'h0000, 16'h0130, 1, 8'h00, 8'h00, 8'h00, 8'h00);
-    capture_response();
+    wait_tx_idle();
     expect_eq8(rx_resp[26], 8'h02, "AL status PREOP");
 
     $display("TEST3: APWR GPIO output register and verify gpio_out");
+    clear_capture();
     send_ecat_single_datagram(8'h02, 16'h0000, 16'h0f00, 1, 8'hA5, 8'h00, 8'h00, 8'h00);
-    capture_response();
+    wait_tx_idle();
     repeat (4) @(posedge clk);
     expect_eq8(gpio_out, 8'hA5, "gpio_out value");
 
     $display("TEST4: Read DC time low bytes and expect monotonic value");
+    clear_capture();
     send_ecat_single_datagram(8'h01, 16'h0000, 16'h0910, 4, 8'h00, 8'h00, 8'h00, 8'h00);
-    capture_response();
+    wait_tx_idle();
     expect_true(resp_len >= 32, "response length for DC read");
     expect_true({rx_resp[29], rx_resp[28], rx_resp[27], rx_resp[26]} != 32'h0000_0000,
                 "dc time non-zero");
