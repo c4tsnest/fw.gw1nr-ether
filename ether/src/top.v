@@ -29,49 +29,43 @@ module top (
     output txen_c,
     output wire [3:0] txd_c,
 
-    output wire [4:0] led
+        output wire [4:0] led,
+        output wire [7:0] gpio_out
 );
 
-  wire act_a;
-  wire act_b;
-  wire act_c;
+    reg [27:0] hb_counter;
+    always @(posedge clock or negedge rst_n) begin
+        if (!rst_n) hb_counter <= 28'd0;
+        else hb_counter <= hb_counter + 28'd1;
+    end
 
-  led u1 (
-      .clk(clock),
-      .rst_n(rst_n),
-      .link_a(link_a),
-      .link_b(link_b),
-      .link_c(link_c),
-      .act_a(act_a),
-      .act_b(act_b),
-      .act_c(act_c),
-      .led(led)
-  );
+    esc_minimal_slave #(
+            .GPIO_OUT_WIDTH(8),
+            .GPIO_IN_WIDTH (0)
+    ) u_esc (
+            .clk     (clock),
+            .rst_n   (rst_n),
+            .link_up (link_a),
+            .rxd     (rxd_a),
+            .rx_dv   (rxdv_a),
+            .txd     (txd_a),
+            .tx_en   (txen_a),
+            .gpio_in (),
+            .gpio_out(gpio_out)
+    );
 
-  mii u2 (
-      .clk(clock),
-      .rst_n(rst_n),
-      .rxd_a(rxd_a),
-      .rx_dv_a(rxdv_a),
-      .rx_er_a(rxer_a),
-      .link_a(link_a),
-      .txd_a(txd_a),
-      .tx_en_a(txen_a),
-      .act_a(act_a),
-      .rxd_b(rxd_b),
-      .rx_dv_b(rxdv_b),
-      .rx_er_b(rxer_b),
-      .link_b(link_b),
-      .txd_b(txd_b),
-      .tx_en_b(txen_b),
-      .act_b(act_b),
-      .rxd_c(rxd_c),
-      .rx_dv_c(rxdv_c),
-      .rx_er_c(rxer_c),
-      .link_c(link_c),
-      .txd_c(txd_c),
-      .tx_en_c(txen_c),
-      .act_c(act_c)
-  );
+    assign txd_b = 4'h0;
+    assign txen_b = 1'b0;
+    assign txd_c = 4'h0;
+    assign txen_c = 1'b0;
+
+    assign led[0] = hb_counter[27];
+    assign led[1] = link_a;
+    assign led[2] = txen_a;
+    assign led[3] = gpio_out[0];
+    assign led[4] = gpio_out[1];
+
+    wire _unused_ok = &{txclk_a, rxer_a, rxclk_a, link_b, txclk_b, rxdv_b, rxer_b, rxclk_b,
+                                            rxd_b, link_c, txclk_c, rxdv_c, rxer_c, rxclk_c, rxd_c};
 
 endmodule
