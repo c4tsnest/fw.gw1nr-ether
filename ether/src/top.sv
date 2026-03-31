@@ -29,15 +29,9 @@ module top (
     output txen_c,
     output wire [3:0] txd_c,
 
-        output wire [4:0] led,
-        output wire [7:0] gpio_out
+    output wire [4:0] led,
+    output wire [7:0] gpio_out
 );
-
-    reg [27:0] hb_counter;
-    always @(posedge clock or negedge rst_n) begin
-        if (!rst_n) hb_counter <= 28'd0;
-        else hb_counter <= hb_counter + 28'd1;
-    end
 
     esc_minimal_slave #(
             .GPIO_OUT_WIDTH(8),
@@ -59,13 +53,21 @@ module top (
     assign txd_c = 4'h0;
     assign txen_c = 1'b0;
 
-    assign led[0] = hb_counter[27];
-    assign led[1] = link_a;
-    assign led[2] = txen_a;
-    assign led[3] = gpio_out[0];
-    assign led[4] = gpio_out[1];
+    led #(
+            .CLK_HZ         (25_000_000),
+            .ACT_HOLD_MS    (120),
+            .BLINK_TOGGLE_HZ(12)
+    ) u_led (
+            .clk    (clock),
+            .rst_n  (rst_n),
+            .link0  (link_a),
+            .link1  (link_b),
+            .rx_act0(rxdv_a),
+            .rx_act1(rxdv_b),
+            .led    (led)
+    );
 
-    wire _unused_ok = &{txclk_a, rxer_a, rxclk_a, link_b, txclk_b, rxdv_b, rxer_b, rxclk_b,
-                                            rxd_b, link_c, txclk_c, rxdv_c, rxer_c, rxclk_c, rxd_c};
+    wire _unused_ok = &{txclk_a, rxer_a, rxclk_a, txclk_b, rxer_b, rxclk_b, rxd_b,
+                        link_c, txclk_c, rxdv_c, rxer_c, rxclk_c, rxd_c};
 
 endmodule

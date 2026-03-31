@@ -4,8 +4,6 @@ set -e
 
 MODULE_FILES=(
     "../ether/src/esc_al_fsm.sv"
-    "../ether/src/ecat_mii_nibble_rx.sv"
-    "../ether/src/ecat_mii_nibble_tx.sv"
     "../ether/src/esc_minimal_slave.sv"
 )
 TB_FILE="../ether/src/tb_esc_minimal.sv"
