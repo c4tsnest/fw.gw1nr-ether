@@ -1,6 +1,6 @@
 module esc_minimal_slave #(
-    parameter int unsigned REG_SPACE_BYTES = 4096,
-  parameter int unsigned FRAME_MAX_BYTES = 1536,
+    parameter int unsigned CORE_REG_BYTES = 16'h0140,
+    parameter int unsigned SM_REG_BYTES = 32,
     parameter int unsigned GPIO_OUT_WIDTH = 8,
     parameter int unsigned GPIO_IN_WIDTH = 0
 ) (
@@ -44,6 +44,7 @@ module esc_minimal_slave #(
   localparam int unsigned GPIO_OUT_BYTES = (GPIO_OUT_WIDTH + 7) / 8;
   localparam int unsigned GPIO_IN_BYTES = (GPIO_IN_WIDTH + 7) / 8;
   localparam int unsigned TX_FIFO_DEPTH = 8;
+  localparam int unsigned REG_CORE_BASE = 16'h0000;
 
   typedef enum logic [1:0] {
     REG_NONE = 2'b00,
@@ -52,7 +53,8 @@ module esc_minimal_slave #(
     REG_RW = 2'b11
   } reg_access_t;
 
-  logic [7:0] reg_mem[0:REG_SPACE_BYTES-1];
+  logic [7:0] reg_core[0:CORE_REG_BYTES-1];
+  logic [7:0] reg_sm[0:SM_REG_BYTES-1];
   logic [7:0] tx_fifo[0:TX_FIFO_DEPTH-1];
 
   logic [63:0] dc_time_counter;
@@ -65,7 +67,6 @@ module esc_minimal_slave #(
   logic rx_half;
   logic rx_dv_d;
 
-  logic [7:0] fifo_in_byte;
   logic [7:0] fifo_out_byte;
   logic push_now;
   logic pop_now;
@@ -75,7 +76,6 @@ module esc_minimal_slave #(
 
   logic tx_half;
 
-  logic in_frame;
   logic [15:0] byte_idx;
   logic [7:0] eth_type_hi;
   logic is_ethercat;
@@ -95,9 +95,38 @@ module esc_minimal_slave #(
 
   integer i;
 
+  function automatic logic addr_in_window(
+      input int unsigned addr,
+      input int unsigned base,
+      input int unsigned size
+  );
+    addr_in_window = (addr >= base) && (addr < (base + size));
+  endfunction
+
   function automatic logic [7:0] reg_rd8(input int unsigned addr);
-    if (addr < REG_SPACE_BYTES) reg_rd8 = reg_mem[addr];
-    else reg_rd8 = 8'h00;
+    if (addr == REG_DL_STATUS) begin
+      reg_rd8 = link_up ? DLSTATUS_PORT0_LINK[7:0] : 8'h00;
+    end else if (addr == (REG_DL_STATUS + 1)) begin
+      reg_rd8 = link_up ? DLSTATUS_PORT0_LINK[15:8] : 8'h00;
+    end else if (addr == REG_AL_STATUS) begin
+      reg_rd8 = {4'b0, al_state};
+    end else if (addr == REG_AL_STATUS_CD) begin
+      reg_rd8 = al_status_code[7:0];
+    end else if (addr == (REG_AL_STATUS_CD + 1)) begin
+      reg_rd8 = al_status_code[15:8];
+    end else if ((addr >= REG_DC_TIME) && (addr < (REG_DC_TIME + 8))) begin
+      reg_rd8 = dc_time_counter[((addr - REG_DC_TIME) * 8) +: 8];
+    end else if ((addr >= REG_GPIO_OUT) && (addr < (REG_GPIO_OUT + GPIO_OUT_BYTES))) begin
+      reg_rd8 = gpio_out[((addr - REG_GPIO_OUT) * 8) +: 8];
+    end else if ((GPIO_IN_WIDTH > 0) && (addr >= REG_GPIO_IN) && (addr < (REG_GPIO_IN + GPIO_IN_BYTES))) begin
+      reg_rd8 = gpio_in[((addr - REG_GPIO_IN) * 8) +: 8];
+    end else if (addr_in_window(addr, REG_CORE_BASE, CORE_REG_BYTES)) begin
+      reg_rd8 = reg_core[addr - REG_CORE_BASE];
+    end else if (addr_in_window(addr, REG_SM_BASE, SM_REG_BYTES)) begin
+      reg_rd8 = reg_sm[addr - REG_SM_BASE];
+    end else begin
+      reg_rd8 = 8'h00;
+    end
   endfunction
 
   function automatic logic [15:0] reg_rd16(input int unsigned addr);
@@ -105,12 +134,22 @@ module esc_minimal_slave #(
   endfunction
 
   function automatic reg_access_t reg_access(input int unsigned addr);
-    reg_access = REG_RW;
+    reg_access = REG_NONE;
+
+    if (addr_in_window(addr, REG_CORE_BASE, CORE_REG_BYTES)) begin
+      reg_access = REG_RW;
+    end
+    if (addr_in_window(addr, REG_SM_BASE, SM_REG_BYTES)) begin
+      reg_access = REG_RW;
+    end
+    if ((addr >= REG_GPIO_OUT) && (addr < (REG_GPIO_OUT + GPIO_OUT_BYTES))) begin
+      reg_access = REG_RW;
+    end
 
     if ((addr >= REG_DC_BASE) && (addr <= REG_DC_END)) begin
       reg_access = REG_R;
     end
-    if (addr == REG_DL_STATUS) begin
+    if ((addr == REG_DL_STATUS) || (addr == (REG_DL_STATUS + 1))) begin
       reg_access = REG_R;
     end
     if (addr == REG_AL_STATUS) begin
@@ -145,30 +184,33 @@ module esc_minimal_slave #(
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      for (i = 0; i < REG_SPACE_BYTES; i++) begin
-        reg_mem[i] <= 8'h00;
+      for (i = 0; i < CORE_REG_BYTES; i++) begin
+        reg_core[i] <= 8'h00;
+      end
+      for (i = 0; i < SM_REG_BYTES; i++) begin
+        reg_sm[i] <= 8'h00;
       end
 
-      reg_mem[16'h0000] <= 8'h11;
-      reg_mem[16'h0001] <= 8'h01;
-      reg_mem[REG_PORTDES] <= 8'h01;
-      reg_mem[REG_ESCSUP] <= 8'h04;
-      reg_mem[REG_ESCSUP + 1] <= 8'h00;
-      reg_mem[16'h000a] <= 8'h00;
-      reg_mem[16'h000b] <= 8'h00;
-      reg_mem[16'h000c] <= 8'h01;
-      reg_mem[16'h000d] <= 8'h00;
-      reg_mem[16'h000e] <= 8'h00;
-      reg_mem[16'h000f] <= 8'h00;
+      reg_core[16'h0000] <= 8'h11;
+      reg_core[16'h0001] <= 8'h01;
+      reg_core[REG_PORTDES] <= 8'h01;
+      reg_core[REG_ESCSUP] <= 8'h04;
+      reg_core[REG_ESCSUP + 1] <= 8'h00;
+      reg_core[16'h000a] <= 8'h00;
+      reg_core[16'h000b] <= 8'h00;
+      reg_core[16'h000c] <= 8'h01;
+      reg_core[16'h000d] <= 8'h00;
+      reg_core[16'h000e] <= 8'h00;
+      reg_core[16'h000f] <= 8'h00;
 
-      reg_mem[REG_SM_BASE + 0] <= 8'h00;
-      reg_mem[REG_SM_BASE + 1] <= 8'h10;
-      reg_mem[REG_SM_BASE + 8] <= 8'h80;
-      reg_mem[REG_SM_BASE + 9] <= 8'h10;
-      reg_mem[REG_SM_BASE + 16] <= 8'h00;
-      reg_mem[REG_SM_BASE + 17] <= 8'h12;
-      reg_mem[REG_SM_BASE + 24] <= 8'h80;
-      reg_mem[REG_SM_BASE + 25] <= 8'h12;
+      reg_sm[0] <= 8'h00;
+      reg_sm[1] <= 8'h10;
+      reg_sm[8] <= 8'h80;
+      reg_sm[9] <= 8'h10;
+      reg_sm[16] <= 8'h00;
+      reg_sm[17] <= 8'h12;
+      reg_sm[24] <= 8'h80;
+      reg_sm[25] <= 8'h12;
 
       dc_time_counter <= 64'd0;
       gpio_out <= '0;
@@ -187,7 +229,6 @@ module esc_minimal_slave #(
       push_now <= 1'b0;
       pop_now <= 1'b0;
 
-      in_frame <= 1'b0;
       byte_idx <= 16'd0;
       eth_type_hi <= 8'h00;
       is_ethercat <= 1'b0;
@@ -207,7 +248,6 @@ module esc_minimal_slave #(
 
       al_req_valid <= 1'b0;
       al_req_state <= 4'h0;
-      fifo_in_byte <= 8'h00;
     end else begin
       dc_time_counter <= dc_time_counter + 64'd1;
       rx_dv_d <= rx_dv;
@@ -215,31 +255,7 @@ module esc_minimal_slave #(
       push_now = 1'b0;
       pop_now = 1'b0;
 
-      if (link_up) begin
-        reg_mem[REG_DL_STATUS] <= DLSTATUS_PORT0_LINK[7:0];
-        reg_mem[REG_DL_STATUS + 1] <= DLSTATUS_PORT0_LINK[15:8];
-      end else begin
-        reg_mem[REG_DL_STATUS] <= 8'h00;
-        reg_mem[REG_DL_STATUS + 1] <= 8'h00;
-      end
-      reg_mem[REG_AL_STATUS] <= {4'b0, al_state};
-      reg_mem[REG_AL_STATUS_CD] <= al_status_code[7:0];
-      reg_mem[REG_AL_STATUS_CD+1] <= al_status_code[15:8];
-
-      for (i = 0; i < 8; i++) begin
-        reg_mem[REG_DC_TIME + i] <= dc_time_counter[(8*i)+:8];
-      end
-      for (i = 0; i < GPIO_OUT_BYTES; i++) begin
-        reg_mem[REG_GPIO_OUT + i] <= gpio_out[(8*i)+:8];
-      end
-      if (GPIO_IN_WIDTH > 0) begin
-        for (i = 0; i < GPIO_IN_BYTES; i++) begin
-          reg_mem[REG_GPIO_IN + i] <= gpio_in[(8*i)+:8];
-        end
-      end
-
       if (rx_dv && !rx_dv_d) begin
-        in_frame <= 1'b1;
         byte_idx <= 16'd0;
         eth_type_hi <= 8'h00;
         is_ethercat <= 1'b0;
@@ -399,8 +415,12 @@ module esc_minimal_slave #(
               byte_addr = ado_reg + (byte_idx - data_start_idx);
 
               if (do_write) begin
-                if ((byte_addr < REG_SPACE_BYTES) && reg_can_write(byte_addr)) begin
-                  reg_mem[byte_addr] <= rx_byte;
+                if (reg_can_write(byte_addr)) begin
+                  if (addr_in_window(byte_addr, REG_CORE_BASE, CORE_REG_BYTES)) begin
+                    reg_core[byte_addr - REG_CORE_BASE] <= rx_byte;
+                  end else if (addr_in_window(byte_addr, REG_SM_BASE, SM_REG_BYTES)) begin
+                    reg_sm[byte_addr - REG_SM_BASE] <= rx_byte;
+                  end
                 end
                 if (byte_addr == REG_AL_CONTROL) begin
                   al_req_state <= rx_byte[3:0];
@@ -414,7 +434,7 @@ module esc_minimal_slave #(
               end
 
               if (do_read) begin
-                if ((byte_addr < REG_SPACE_BYTES) && reg_can_read(byte_addr)) begin
+                if (reg_can_read(byte_addr)) begin
                   tx_byte = reg_rd8(byte_addr);
                 end else begin
                   tx_byte = 8'h00;
@@ -443,7 +463,6 @@ module esc_minimal_slave #(
       end
 
       if (!rx_dv && rx_dv_d) begin
-        in_frame <= 1'b0;
         rx_half <= 1'b0;
       end
 

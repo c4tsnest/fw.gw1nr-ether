@@ -21,8 +21,6 @@ module tb_esc_minimal;
   logic [3:0] cap_low_nibble;
 
   esc_minimal_slave #(
-      .REG_SPACE_BYTES(4096),
-      .FRAME_MAX_BYTES(1536),
       .GPIO_OUT_WIDTH(8),
       .GPIO_IN_WIDTH(0)
   ) dut (
