@@ -83,6 +83,7 @@ module esc_minimal_slave #(
   logic tx_half;
 
   logic [15:0] byte_idx;
+  logic [15:0] frame_offset;
   logic [7:0] eth_type_hi;
   logic is_ethercat;
   logic [7:0] cmd_reg;
@@ -238,6 +239,7 @@ module esc_minimal_slave #(
       pop_now <= 1'b0;
 
       byte_idx <= 16'd0;
+      frame_offset <= 16'd0;
       eth_type_hi <= 8'h00;
       is_ethercat <= 1'b0;
       cmd_reg <= 8'h00;
@@ -276,6 +278,7 @@ module esc_minimal_slave #(
 
       if (rx_dv && !rx_dv_d) begin
         byte_idx <= 16'd0;
+        frame_offset <= 16'd0;
         eth_type_hi <= 8'h00;
         is_ethercat <= 1'b0;
         cmd_reg <= 8'h00;
@@ -303,27 +306,46 @@ module esc_minimal_slave #(
           logic [7:0] tx_byte;
           logic [15:0] byte_addr;
           logic [15:0] station_addr;
+          logic [15:0] cmd_idx;
+          logic [15:0] adp_lo_idx;
+          logic [15:0] adp_hi_idx;
+          logic [15:0] ado_lo_idx;
+          logic [15:0] ado_hi_idx;
+          logic [15:0] dlen_lo_idx;
+          logic [15:0] dlen_hi_idx;
           logic low_overflow;
 
           rx_byte = {rxd, rx_low_nibble};
           tx_byte = rx_byte;
 
-          if (byte_idx == 16'd12) begin
+          if ((byte_idx == 16'd12) || (byte_idx == 16'd20)) begin
             eth_type_hi <= rx_byte;
-            is_ethercat <= 1'b0;
           end
-          if (byte_idx == 16'd13) begin
+          if ((byte_idx == 16'd13) && !is_ethercat) begin
             if ((eth_type_hi == 8'h88) && (rx_byte == 8'hA4)) begin
               is_ethercat <= 1'b1;
+              frame_offset <= 16'd0;
               debug_ethercat <= 1'b1;
             end
-          end else begin
-            debug_ethercat <= 1'b0;
+          end
+          if ((byte_idx == 16'd21) && !is_ethercat) begin
+            if ((eth_type_hi == 8'h88) && (rx_byte == 8'hA4)) begin
+              is_ethercat <= 1'b1;
+              frame_offset <= 16'd8;
+              debug_ethercat <= 1'b1;
+            end
           end
 
           if (is_ethercat) begin
-            case (byte_idx)
-              16'd16: begin
+            cmd_idx = 16'd16 + frame_offset;
+            adp_lo_idx = 16'd18 + frame_offset;
+            adp_hi_idx = 16'd19 + frame_offset;
+            ado_lo_idx = 16'd20 + frame_offset;
+            ado_hi_idx = 16'd21 + frame_offset;
+            dlen_lo_idx = 16'd22 + frame_offset;
+            dlen_hi_idx = 16'd23 + frame_offset;
+
+            if (byte_idx == cmd_idx) begin
                 cmd_reg <= rx_byte;
                 case (rx_byte)
                   CMD_APRD: begin
@@ -355,85 +377,74 @@ module esc_minimal_slave #(
                     wkc_inc_value <= 2'd0;
                   end
                 endcase
-              end
-              16'd18: begin
+            end else if (byte_idx == adp_lo_idx) begin
                 adp_reg[7:0] <= rx_byte;
                 if (is_auto_inc_cmd) begin
                   tx_byte = rx_byte - 8'h01;
                   adp_dec_borrow <= (rx_byte == 8'h00);
                 end
-              end
-              16'd19: begin
+            end else if (byte_idx == adp_hi_idx) begin
                 adp_reg[15:8] <= rx_byte;
                 if (is_auto_inc_cmd) begin
                   tx_byte = rx_byte - {7'd0, adp_dec_borrow};
                 end
-              end
-              16'd20: ado_reg[7:0] <= rx_byte;
-              16'd21: ado_reg[15:8] <= rx_byte;
-              16'd22: dlen_reg[7:0] <= rx_byte;
-              16'd23: begin
+            end else if (byte_idx == ado_lo_idx) begin
+              ado_reg[7:0] <= rx_byte;
+            end else if (byte_idx == ado_hi_idx) begin
+              ado_reg[15:8] <= rx_byte;
+            end else if (byte_idx == dlen_lo_idx) begin
+              dlen_reg[7:0] <= rx_byte;
+            end else if (byte_idx == dlen_hi_idx) begin
                 logic addr_match_computed;
-                logic cmd_match;
 
                 dlen_reg[10:8] <= rx_byte[2:0];
-                data_start_idx <= 16'd26;
-                wkc_start_idx <= 16'd26 + {5'd0, rx_byte[2:0], dlen_reg[7:0]};
+                data_start_idx <= 16'd26 + frame_offset;
+                wkc_start_idx <= (16'd26 + frame_offset) + {5'd0, rx_byte[2:0], dlen_reg[7:0]};
 
                 station_addr = reg_rd16(REG_STATION_ADDR);
                 do_read <= 1'b0;
                 do_write <= 1'b0;
                 addr_match_computed = 1'b0;
-                cmd_match = 1'b0;
                 
                 case (cmd_reg)
                   CMD_APRD: begin
                     addr_match_computed = (adp_reg == 16'h0000);
                     do_read <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_APWR: begin
                     addr_match_computed = (adp_reg == 16'h0000);
                     do_write <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_APRW: begin
                     addr_match_computed = (adp_reg == 16'h0000);
                     do_read <= 1'b1;
                     do_write <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_FPRD: begin
                     addr_match_computed = (adp_reg == station_addr);
                     do_read <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_FPWR: begin
                     addr_match_computed = (adp_reg == station_addr);
                     do_write <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_FPRW: begin
                     addr_match_computed = (adp_reg == station_addr);
                     do_read <= 1'b1;
                     do_write <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_BRD: begin
                     addr_match_computed = 1'b1;
                     do_read <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_BWR: begin
                     addr_match_computed = 1'b1;
                     do_write <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   CMD_BRW: begin
                     addr_match_computed = 1'b1;
                     do_read <= 1'b1;
                     do_write <= 1'b1;
-                    cmd_match = 1'b1;
                   end
                   default: begin
                     addr_match_computed = 1'b0;
@@ -444,10 +455,7 @@ module esc_minimal_slave #(
                 
                 addr_match <= addr_match_computed;
                 debug_addr_match <= addr_match_computed;
-              end
-              default: begin
-              end
-            endcase
+            end
 
             if (addr_match && (byte_idx >= data_start_idx) &&
                 (byte_idx < (data_start_idx + {5'd0, dlen_reg}))) begin
@@ -482,7 +490,6 @@ module esc_minimal_slave #(
             end
 
             if (addr_match && (byte_idx == wkc_start_idx)) begin
-              logic [15:0] wkc_new_value;
               tx_byte = rx_byte + {6'd0, wkc_inc_value};
               low_overflow = ({1'b0, rx_byte} + {7'd0, wkc_inc_value}) > 9'h0ff;
               wkc_carry <= low_overflow;
