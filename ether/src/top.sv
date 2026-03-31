@@ -1,37 +1,38 @@
 module top (
-    input rst_n,
-    input clock,
+    input  logic       rst_n,
+    input  logic       clock,
 
-    input link_a,
-    input txclk_a,
-    input rxdv_a,
-    input rxer_a,
-    input rxclk_a,
-    input [3:0] rxd_a,
-    output txen_a,
-    output wire [3:0] txd_a,
+    input  logic       link_a,
+    input  logic       txclk_a,
+    input  logic       rxdv_a,
+    input  logic       rxer_a,
+    input  logic       rxclk_a,
+    input  logic [3:0] rxd_a,
+    output logic       txen_a,
+    output logic [3:0] txd_a,
 
-    input link_b,
-    input txclk_b,
-    input rxdv_b,
-    input rxer_b,
-    input rxclk_b,
-    input [3:0] rxd_b,
-    output txen_b,
-    output wire [3:0] txd_b,
+    input  logic       link_b,
+    input  logic       txclk_b,
+    input  logic       rxdv_b,
+    input  logic       rxer_b,
+    input  logic       rxclk_b,
+    input  logic [3:0] rxd_b,
+    output logic       txen_b,
+    output logic [3:0] txd_b,
 
-    input link_c,
-    input txclk_c,
-    input rxdv_c,
-    input rxer_c,
-    input rxclk_c,
-    input [3:0] rxd_c,
-    output txen_c,
-    output wire [3:0] txd_c,
+    input  logic       link_c,
+    input  logic       txclk_c,
+    input  logic       rxdv_c,
+    input  logic       rxer_c,
+    input  logic       rxclk_c,
+    input  logic [3:0] rxd_c,
+    output logic       txen_c,
+    output logic [3:0] txd_c,
 
-    output wire [4:0] led
-    // output wire [7:0] gpio_out
+    output logic [4:0] led
 );
+
+    logic unused_ok;
 
     esc_minimal_slave #(
             .GPIO_OUT_WIDTH(8),
@@ -39,19 +40,24 @@ module top (
     ) u_esc (
             .clk     (clock),
             .rst_n   (rst_n),
-            .link_up (link_a),
-            .rxd     (rxd_a),
-            .rx_dv   (rxdv_a),
-            .txd     (txd_a),
-            .tx_en   (txen_a),
+            .link_up (link_b),
+            .rxd     (rxd_b),
+            .rx_dv   (rxdv_b),
+            .txd     (txd_b),
+            .tx_en   (txen_b),
             .gpio_in (),
-            .gpio_out(/*gpio_out*/)
+            .gpio_out()
     );
 
-    assign txd_b = 4'h0;
-    assign txen_b = 1'b0;
-    assign txd_c = 4'h0;
-    assign txen_c = 1'b0;
+    always_comb begin
+      txd_a = 4'h0;
+      txen_a = 1'b0;
+      txd_c = 4'h0;
+      txen_c = 1'b0;
+      unused_ok = &{link_a, txclk_a, rxdv_a, rxer_a, rxclk_a, rxd_a,
+                    txclk_b, rxer_b, rxclk_b,
+                    txclk_c, rxer_c, rxclk_c, rxd_c};
+    end
 
     led #(
             .CLK_HZ         (25_000_000),
@@ -60,14 +66,11 @@ module top (
     ) u_led (
             .clk    (clock),
             .rst_n  (rst_n),
-            .link0  (link_a),
-            .link1  (link_b),
-            .rx_act0(rxdv_a),
-            .rx_act1(rxdv_b),
+            .link0  (link_b),
+            .link1  (link_c),
+            .rx_act0(rxdv_b),
+            .rx_act1(rxdv_c),
             .led    (led)
     );
-
-    wire _unused_ok = &{txclk_a, rxer_a, rxclk_a, txclk_b, rxer_b, rxclk_b, rxd_b,
-                        link_c, txclk_c, rxdv_c, rxer_c, rxclk_c, rxd_c};
 
 endmodule
