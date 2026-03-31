@@ -34,6 +34,10 @@ module top (
 
     logic unused_ok;
 
+    logic debug_ethercat;
+    logic debug_addr_match;
+    logic debug_wkc_inc;
+
     esc_minimal_slave #(
             .GPIO_OUT_WIDTH(8),
             .GPIO_IN_WIDTH (0)
@@ -46,7 +50,10 @@ module top (
             .txd     (txd_b),
             .tx_en   (txen_b),
             .gpio_in (),
-            .gpio_out()
+            .gpio_out(),
+            .debug_ethercat(debug_ethercat),
+            .debug_addr_match(debug_addr_match),
+            .debug_wkc_inc(debug_wkc_inc)
     );
 
     always_comb begin
@@ -70,6 +77,9 @@ module top (
             .link1  (link_c),
             .rx_act0(rxdv_b),
             .rx_act1(rxdv_c),
+            .dbg0   (debug_ethercat),
+            .dbg1   (debug_addr_match),
+            .dbg2   (debug_wkc_inc),
             .led    (led)
     );
 

@@ -9,6 +9,9 @@ module led #(
     input logic link1,
     input logic rx_act0,
     input logic rx_act1,
+    input logic dbg0,
+    input logic dbg1,
+    input logic dbg2,
     output logic [4:0] led
 );
 
@@ -26,9 +29,19 @@ module led #(
   logic act0_latched;
   logic act1_latched;
 
+  logic [31:0] dbg_hold0;
+  logic [31:0] dbg_hold1;
+  logic [31:0] dbg_hold2;
+  logic dbg0_latched;
+  logic dbg1_latched;
+  logic dbg2_latched;
+
   always_comb begin
     act0_latched = (act_hold0 != 32'd0);
     act1_latched = (act_hold1 != 32'd0);
+    dbg0_latched = (dbg_hold0 != 32'd0);
+    dbg1_latched = (dbg_hold1 != 32'd0);
+    dbg2_latched = (dbg_hold2 != 32'd0);
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -43,6 +56,10 @@ module led #(
 
       act_hold0 <= 32'd0;
       act_hold1 <= 32'd0;
+
+      dbg_hold0 <= 32'd0;
+      dbg_hold1 <= 32'd0;
+      dbg_hold2 <= 32'd0;
 
       led <= 5'b00000;
     end else begin
@@ -70,9 +87,29 @@ module led #(
         act_hold1 <= act_hold1 - 32'd1;
       end
 
+      if (dbg0) begin
+        dbg_hold0 <= ACT_HOLD_TICKS;
+      end else if (dbg_hold0 != 32'd0) begin
+        dbg_hold0 <= dbg_hold0 - 32'd1;
+      end
+
+      if (dbg1) begin
+        dbg_hold1 <= ACT_HOLD_TICKS;
+      end else if (dbg_hold1 != 32'd0) begin
+        dbg_hold1 <= dbg_hold1 - 32'd1;
+      end
+
+      if (dbg2) begin
+        dbg_hold2 <= ACT_HOLD_TICKS;
+      end else if (dbg_hold2 != 32'd0) begin
+        dbg_hold2 <= dbg_hold2 - 32'd1;
+      end
+
       led[0] <= link0 & (~act0_latched | blink_phase);
       led[1] <= link1 & (~act1_latched | blink_phase);
-      led[4:2] <= 3'b000;
+      led[2] <= dbg0_latched;
+      led[3] <= dbg1_latched;
+      led[4] <= dbg2_latched;
     end
   end
 

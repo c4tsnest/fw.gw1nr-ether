@@ -12,7 +12,10 @@ module esc_minimal_slave #(
     output logic [3:0]                txd,
     output logic                      tx_en,
     input  logic [GPIO_IN_WIDTH-1:0]  gpio_in,
-    output logic [GPIO_OUT_WIDTH-1:0] gpio_out
+    output logic [GPIO_OUT_WIDTH-1:0] gpio_out,
+    output logic                      debug_ethercat,
+    output logic                      debug_addr_match,
+    output logic                      debug_wkc_inc
 );
 
   localparam logic [7:0] CMD_APRD = 8'h01;
@@ -38,6 +41,7 @@ module esc_minimal_slave #(
   localparam int unsigned REG_DC_TIME      = 16'h0910;
   localparam int unsigned REG_GPIO_OUT     = 16'h0f00;
   localparam int unsigned REG_GPIO_IN      = 16'h0f10;
+  localparam int unsigned REG_DEBUG_WKC    = 16'h0f20;
 
   localparam logic [15:0] DLSTATUS_PORT0_LINK = 16'h0200;
 
@@ -56,6 +60,8 @@ module esc_minimal_slave #(
   logic [7:0] reg_core[0:CORE_REG_BYTES-1];
   logic [7:0] reg_sm[0:SM_REG_BYTES-1];
   logic [7:0] tx_fifo[0:TX_FIFO_DEPTH-1];
+
+  logic [15:0] debug_wkc_value;
 
   logic [63:0] dc_time_counter;
   logic [3:0] al_state;
@@ -120,6 +126,8 @@ module esc_minimal_slave #(
       reg_rd8 = gpio_out[((addr - REG_GPIO_OUT) * 8) +: 8];
     end else if ((GPIO_IN_WIDTH > 0) && (addr >= REG_GPIO_IN) && (addr < (REG_GPIO_IN + GPIO_IN_BYTES))) begin
       reg_rd8 = gpio_in[((addr - REG_GPIO_IN) * 8) +: 8];
+    end else if ((addr >= REG_DEBUG_WKC) && (addr < (REG_DEBUG_WKC + 2))) begin
+      reg_rd8 = debug_wkc_value[((addr - REG_DEBUG_WKC) * 8) +: 8];
     end else if (addr_in_window(addr, REG_CORE_BASE, CORE_REG_BYTES)) begin
       reg_rd8 = reg_core[addr - REG_CORE_BASE];
     end else if (addr_in_window(addr, REG_SM_BASE, SM_REG_BYTES)) begin
@@ -248,10 +256,21 @@ module esc_minimal_slave #(
 
       al_req_valid <= 1'b0;
       al_req_state <= 4'h0;
+
+      debug_ethercat <= 1'b0;
+      debug_addr_match <= 1'b0;
+      debug_wkc_inc <= 1'b0;
+      debug_wkc_value <= 16'h0000;
     end else begin
       dc_time_counter <= dc_time_counter + 64'd1;
       rx_dv_d <= rx_dv;
       al_req_valid <= 1'b0;
+      
+      // Default: clear all debug pulses each cycle
+      debug_ethercat <= 1'b0;
+      debug_addr_match <= 1'b0;
+      debug_wkc_inc <= 1'b0;
+      
       push_now = 1'b0;
       pop_now = 1'b0;
 
@@ -296,7 +315,10 @@ module esc_minimal_slave #(
           if (byte_idx == 16'd13) begin
             if ((eth_type_hi == 8'h88) && (rx_byte == 8'hA4)) begin
               is_ethercat <= 1'b1;
+              debug_ethercat <= 1'b1;
             end
+          end else begin
+            debug_ethercat <= 1'b0;
           end
 
           if (is_ethercat) begin
@@ -351,6 +373,9 @@ module esc_minimal_slave #(
               16'd21: ado_reg[15:8] <= rx_byte;
               16'd22: dlen_reg[7:0] <= rx_byte;
               16'd23: begin
+                logic addr_match_computed;
+                logic cmd_match;
+
                 dlen_reg[10:8] <= rx_byte[2:0];
                 data_start_idx <= 16'd26;
                 wkc_start_idx <= 16'd26 + {5'd0, rx_byte[2:0], dlen_reg[7:0]};
@@ -358,53 +383,67 @@ module esc_minimal_slave #(
                 station_addr = reg_rd16(REG_STATION_ADDR);
                 do_read <= 1'b0;
                 do_write <= 1'b0;
-                addr_match <= 1'b0;
+                addr_match_computed = 1'b0;
+                cmd_match = 1'b0;
+                
                 case (cmd_reg)
                   CMD_APRD: begin
-                    addr_match <= (adp_reg == 16'h0000);
+                    addr_match_computed = (adp_reg == 16'h0000);
                     do_read <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_APWR: begin
-                    addr_match <= (adp_reg == 16'h0000);
+                    addr_match_computed = (adp_reg == 16'h0000);
                     do_write <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_APRW: begin
-                    addr_match <= (adp_reg == 16'h0000);
+                    addr_match_computed = (adp_reg == 16'h0000);
                     do_read <= 1'b1;
                     do_write <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_FPRD: begin
-                    addr_match <= (adp_reg == station_addr);
+                    addr_match_computed = (adp_reg == station_addr);
                     do_read <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_FPWR: begin
-                    addr_match <= (adp_reg == station_addr);
+                    addr_match_computed = (adp_reg == station_addr);
                     do_write <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_FPRW: begin
-                    addr_match <= (adp_reg == station_addr);
+                    addr_match_computed = (adp_reg == station_addr);
                     do_read <= 1'b1;
                     do_write <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_BRD: begin
-                    addr_match <= 1'b1;
+                    addr_match_computed = 1'b1;
                     do_read <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_BWR: begin
-                    addr_match <= 1'b1;
+                    addr_match_computed = 1'b1;
                     do_write <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   CMD_BRW: begin
-                    addr_match <= 1'b1;
+                    addr_match_computed = 1'b1;
                     do_read <= 1'b1;
                     do_write <= 1'b1;
+                    cmd_match = 1'b1;
                   end
                   default: begin
-                    addr_match <= 1'b0;
+                    addr_match_computed = 1'b0;
                     do_read <= 1'b0;
                     do_write <= 1'b0;
                   end
                 endcase
+                
+                addr_match <= addr_match_computed;
+                debug_addr_match <= addr_match_computed;
               end
               default: begin
               end
@@ -443,12 +482,23 @@ module esc_minimal_slave #(
             end
 
             if (addr_match && (byte_idx == wkc_start_idx)) begin
+              logic [15:0] wkc_new_value;
               tx_byte = rx_byte + {6'd0, wkc_inc_value};
               low_overflow = ({1'b0, rx_byte} + {7'd0, wkc_inc_value}) > 9'h0ff;
               wkc_carry <= low_overflow;
+              // Capture WKC low byte for later assembly
+              debug_wkc_value[7:0] <= tx_byte;
+              debug_wkc_inc <= 1'b1;
             end else if (addr_match && (byte_idx == (wkc_start_idx + 16'd1))) begin
               tx_byte = rx_byte + {7'd0, wkc_carry};
+              // Capture WKC high byte
+              debug_wkc_value[15:8] <= tx_byte;
+              debug_wkc_inc <= 1'b1;
+            end else begin
+              debug_wkc_inc <= 1'b0;
             end
+          end else begin
+            debug_wkc_inc <= 1'b0;
           end
 
           if (fifo_count < TX_FIFO_DEPTH) begin
