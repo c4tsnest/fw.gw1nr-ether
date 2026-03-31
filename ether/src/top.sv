@@ -29,8 +29,8 @@ module top (
     output txen_c,
     output wire [3:0] txd_c,
 
-    output wire [4:0] led,
-    output wire [7:0] gpio_out
+    output wire [4:0] led
+    // output wire [7:0] gpio_out
 );
 
     esc_minimal_slave #(
@@ -45,7 +45,7 @@ module top (
             .txd     (txd_a),
             .tx_en   (txen_a),
             .gpio_in (),
-            .gpio_out(gpio_out)
+            .gpio_out(/*gpio_out*/)
     );
 
     assign txd_b = 4'h0;
