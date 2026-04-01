@@ -1,7 +1,7 @@
 module led #(
     parameter int unsigned CLK_HZ = 25_000_000,
     parameter int unsigned ACT_HOLD_MS = 120,
-    parameter int unsigned BLINK_TOGGLE_HZ = 12
+    parameter int unsigned BLINK_TOGGLE_HZ = 20
 ) (
     input logic clk,
     input logic rst_n,

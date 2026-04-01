@@ -101,13 +101,13 @@ module top (
     led #(
             .CLK_HZ         (25_000_000),
             .ACT_HOLD_MS    (120),
-            .BLINK_TOGGLE_HZ(12)
+            .BLINK_TOGGLE_HZ(20)
     ) u_led (
             .clk    (clock),
             .rst_n  (rst_n),
-            .link_a (link_a),
-            .link_b (link_b),
-            .link_c (link_c),
+            .link_a (~link_a),
+            .link_b (~link_b),
+            .link_c (~link_c),
             .act_a  (rxdv_a | txen_a),
             .act_b  (rxdv_b | txen_b),
             .act_c  (rxdv_c | txen_c),
