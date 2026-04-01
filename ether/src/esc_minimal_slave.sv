@@ -603,7 +603,9 @@ module esc_minimal_slave #(
             tx_fifo[fifo_wr_ptr] <= emit_byte;
             fifo_wr_ptr <= fifo_wr_ptr + 1'b1;
             push_now = 1'b1;
-            crc_reg <= crc32_update_byte(crc_reg, emit_byte);
+            if (!(preamble_valid && (byte_idx < 16'd12))) begin
+              crc_reg <= crc32_update_byte(crc_reg, emit_byte);
+            end
           end
 
           byte_idx <= byte_idx + 16'd1;

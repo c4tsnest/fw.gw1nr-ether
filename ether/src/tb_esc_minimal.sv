@@ -329,10 +329,22 @@ module tb_esc_minimal;
   task automatic expect_fcs_valid(input int frame_len, input string name);
     logic [31:0] crc_calc;
     logic [31:0] fcs_got;
+    int crc_start;
     int idx;
     begin
       crc_calc = 32'hFFFF_FFFF;
-      for (idx = 0; idx < (frame_len - 4); idx++) begin
+
+      if ((frame_len >= 12) &&
+          (rx_resp[0] == 8'h55) && (rx_resp[1] == 8'h55) &&
+          (rx_resp[2] == 8'h55) && (rx_resp[3] == 8'h55) &&
+          (rx_resp[4] == 8'h55) && (rx_resp[5] == 8'h55) &&
+          (rx_resp[6] == 8'h55) && (rx_resp[7] == 8'hD5)) begin
+        crc_start = 8;
+      end else begin
+        crc_start = 0;
+      end
+
+      for (idx = crc_start; idx < (frame_len - 4); idx++) begin
         crc_calc = crc32_update_byte_tb(crc_calc, rx_resp[idx]);
       end
       crc_calc = ~crc_calc;
