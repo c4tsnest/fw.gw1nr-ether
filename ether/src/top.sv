@@ -10,6 +10,7 @@ module top (
     input  logic [3:0] rxd_a,
     output logic       txen_a,
     output logic [3:0] txd_a,
+    output logic       nrst_a,
 
     input  logic       link_b,
     input  logic       txclk_b,
@@ -19,6 +20,7 @@ module top (
     input  logic [3:0] rxd_b,
     output logic       txen_b,
     output logic [3:0] txd_b,
+    output logic       nrst_b,
 
     input  logic       link_c,
     input  logic       txclk_c,
@@ -28,6 +30,7 @@ module top (
     input  logic [3:0] rxd_c,
     output logic       txen_c,
     output logic [3:0] txd_c,
+    output logic       nrst_c,
 
     output logic [4:0] led
 );
@@ -37,6 +40,11 @@ module top (
     logic debug_ethercat;
     logic debug_addr_match;
     logic debug_wkc_inc;
+
+    // PHY reset hold logic: hold reset low for ~5ms (125k cycles @ 25MHz)
+    localparam int unsigned RESET_HOLD_CYCLES = 125_000;
+    logic [19:0] reset_hold_counter;
+    logic reset_hold_active;
 
     esc_minimal_slave #(
             .GPIO_OUT_WIDTH(8),
@@ -64,6 +72,30 @@ module top (
       unused_ok = &{link_a, txclk_a, rxdv_a, rxer_a, rxclk_a, rxd_a,
                     txclk_b, rxer_b, rxclk_b,
                     txclk_c, rxer_c, rxclk_c, rxd_c};
+    end
+
+    // PHY reset hold counter: hold nrst low for ~5ms at startup
+    always_ff @(posedge clock or negedge rst_n) begin
+        if (!rst_n) begin
+            reset_hold_counter <= '0;
+            reset_hold_active <= 1'b1;
+        end else begin
+            if (reset_hold_active) begin
+                if (reset_hold_counter >= (RESET_HOLD_CYCLES - 1)) begin
+                    reset_hold_counter <= '0;
+                    reset_hold_active <= 1'b0;
+                end else begin
+                    reset_hold_counter <= reset_hold_counter + 1'b1;
+                end
+            end
+        end
+    end
+
+    // Drive nrst outputs: low during hold period, high otherwise
+    always_comb begin
+        nrst_a = ~reset_hold_active;
+        nrst_b = ~reset_hold_active;
+        nrst_c = ~reset_hold_active;
     end
 
     led #(
