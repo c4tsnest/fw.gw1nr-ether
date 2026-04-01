@@ -102,6 +102,16 @@ module esc_minimal_slave #(
   logic [1:0] wkc_inc_value;
   logic wkc_carry;
 
+  logic [31:0] crc_reg;
+  logic [7:0] fcs_delay0;
+  logic [7:0] fcs_delay1;
+  logic [7:0] fcs_delay2;
+  logic [7:0] fcs_delay3;
+  logic [2:0] fcs_delay_count;
+  logic append_crc_active;
+  logic [1:0] append_crc_idx;
+  logic [31:0] append_crc_value;
+
   integer i;
 
   function automatic logic addr_in_window(
@@ -182,6 +192,25 @@ module esc_minimal_slave #(
     reg_can_write = (reg_access(addr) == REG_W) || (reg_access(addr) == REG_RW);
   endfunction
 
+  function automatic logic [31:0] crc32_update_byte(
+      input logic [31:0] crc_in,
+      input logic [7:0] data
+  );
+    logic [31:0] crc_next;
+    int bit_idx;
+    begin
+      crc_next = crc_in;
+      for (bit_idx = 0; bit_idx < 8; bit_idx++) begin
+        if ((crc_next[0] ^ data[bit_idx]) == 1'b1) begin
+          crc_next = (crc_next >> 1) ^ 32'hEDB88320;
+        end else begin
+          crc_next = (crc_next >> 1);
+        end
+      end
+      crc32_update_byte = crc_next;
+    end
+  endfunction
+
   esc_al_fsm u_al_fsm (
       .clk(clk),
       .rst_n(rst_n),
@@ -260,6 +289,16 @@ module esc_minimal_slave #(
       wkc_inc_value <= 2'd0;
       wkc_carry <= 1'b0;
 
+      crc_reg <= 32'hFFFF_FFFF;
+      fcs_delay0 <= 8'h00;
+      fcs_delay1 <= 8'h00;
+      fcs_delay2 <= 8'h00;
+      fcs_delay3 <= 8'h00;
+      fcs_delay_count <= 3'd0;
+      append_crc_active <= 1'b0;
+      append_crc_idx <= 2'd0;
+      append_crc_value <= 32'h0000_0000;
+
       al_req_valid <= 1'b0;
       al_req_state <= 4'h0;
 
@@ -300,6 +339,15 @@ module esc_minimal_slave #(
         adp_dec_borrow <= 1'b0;
         wkc_inc_value <= 2'd0;
         wkc_carry <= 1'b0;
+        crc_reg <= 32'hFFFF_FFFF;
+        fcs_delay0 <= 8'h00;
+        fcs_delay1 <= 8'h00;
+        fcs_delay2 <= 8'h00;
+        fcs_delay3 <= 8'h00;
+        fcs_delay_count <= 3'd0;
+        append_crc_active <= 1'b0;
+        append_crc_idx <= 2'd0;
+        append_crc_value <= 32'h0000_0000;
         rx_half <= 1'b0;
       end
 
@@ -310,6 +358,8 @@ module esc_minimal_slave #(
         end else begin
           logic [7:0] rx_byte;
           logic [7:0] tx_byte;
+          logic [7:0] emit_byte;
+          logic emit_valid;
           logic [15:0] byte_addr;
           logic [15:0] station_addr;
           logic [15:0] cmd_idx;
@@ -323,6 +373,8 @@ module esc_minimal_slave #(
 
           rx_byte = {rxd, rx_low_nibble};
           tx_byte = rx_byte;
+          emit_byte = 8'h00;
+          emit_valid = 1'b0;
 
           if (!has_preamble && (byte_idx <= 16'd7)) begin
             if (preamble_valid) begin
@@ -530,10 +582,28 @@ module esc_minimal_slave #(
             debug_wkc_inc <= 1'b0;
           end
 
-          if (fifo_count < TX_FIFO_DEPTH) begin
-            tx_fifo[fifo_wr_ptr] <= tx_byte;
+          if (fcs_delay_count < 3'd4) begin
+            case (fcs_delay_count)
+              3'd0: fcs_delay0 <= tx_byte;
+              3'd1: fcs_delay1 <= tx_byte;
+              3'd2: fcs_delay2 <= tx_byte;
+              default: fcs_delay3 <= tx_byte;
+            endcase
+            fcs_delay_count <= fcs_delay_count + 3'd1;
+          end else begin
+            emit_byte = fcs_delay0;
+            emit_valid = 1'b1;
+            fcs_delay0 <= fcs_delay1;
+            fcs_delay1 <= fcs_delay2;
+            fcs_delay2 <= fcs_delay3;
+            fcs_delay3 <= tx_byte;
+          end
+
+          if (emit_valid && (fifo_count < TX_FIFO_DEPTH)) begin
+            tx_fifo[fifo_wr_ptr] <= emit_byte;
             fifo_wr_ptr <= fifo_wr_ptr + 1'b1;
             push_now = 1'b1;
+            crc_reg <= crc32_update_byte(crc_reg, emit_byte);
           end
 
           byte_idx <= byte_idx + 16'd1;
@@ -543,6 +613,27 @@ module esc_minimal_slave #(
 
       if (!rx_dv && rx_dv_d) begin
         rx_half <= 1'b0;
+        append_crc_active <= 1'b1;
+        append_crc_idx <= 2'd0;
+        append_crc_value <= ~crc_reg;
+        fcs_delay_count <= 3'd0;
+      end
+
+      if (append_crc_active && (fifo_count < TX_FIFO_DEPTH)) begin
+        case (append_crc_idx)
+          2'd0: tx_fifo[fifo_wr_ptr] <= append_crc_value[7:0];
+          2'd1: tx_fifo[fifo_wr_ptr] <= append_crc_value[15:8];
+          2'd2: tx_fifo[fifo_wr_ptr] <= append_crc_value[23:16];
+          default: tx_fifo[fifo_wr_ptr] <= append_crc_value[31:24];
+        endcase
+        fifo_wr_ptr <= fifo_wr_ptr + 1'b1;
+        push_now = 1'b1;
+
+        if (append_crc_idx == 2'd3) begin
+          append_crc_active <= 1'b0;
+        end else begin
+          append_crc_idx <= append_crc_idx + 2'd1;
+        end
       end
 
       if (fifo_count != 0) begin

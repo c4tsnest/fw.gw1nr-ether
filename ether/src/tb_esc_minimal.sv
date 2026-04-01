@@ -147,6 +147,11 @@ module tb_esc_minimal;
       send_byte(8'h00);
       send_byte(8'h00);
 
+      send_byte(8'h00);
+      send_byte(8'h00);
+      send_byte(8'h00);
+      send_byte(8'h00);
+
       end_frame();
     end
   endtask
@@ -209,6 +214,11 @@ module tb_esc_minimal;
       if (payload_len > 6) send_byte(payload6);
       if (payload_len > 7) send_byte(payload7);
 
+      send_byte(8'h00);
+      send_byte(8'h00);
+
+      send_byte(8'h00);
+      send_byte(8'h00);
       send_byte(8'h00);
       send_byte(8'h00);
 
@@ -275,6 +285,11 @@ module tb_esc_minimal;
       send_byte(8'h00);
       send_byte(8'h00);
 
+      send_byte(8'h00);
+      send_byte(8'h00);
+      send_byte(8'h00);
+      send_byte(8'h00);
+
       end_frame();
     end
   endtask
@@ -287,6 +302,46 @@ module tb_esc_minimal;
     begin
       if (got !== exp) begin
         $display("FAIL: %s got=%02x exp=%02x", name, got, exp);
+        $fatal(1);
+      end
+    end
+  endtask
+
+  function automatic logic [31:0] crc32_update_byte_tb(
+      input logic [31:0] crc_in,
+      input logic [7:0] data
+  );
+    logic [31:0] crc_next;
+    int bit_idx;
+    begin
+      crc_next = crc_in;
+      for (bit_idx = 0; bit_idx < 8; bit_idx++) begin
+        if ((crc_next[0] ^ data[bit_idx]) == 1'b1) begin
+          crc_next = (crc_next >> 1) ^ 32'hEDB88320;
+        end else begin
+          crc_next = (crc_next >> 1);
+        end
+      end
+      crc32_update_byte_tb = crc_next;
+    end
+  endfunction
+
+  task automatic expect_fcs_valid(input int frame_len, input string name);
+    logic [31:0] crc_calc;
+    logic [31:0] fcs_got;
+    int idx;
+    begin
+      crc_calc = 32'hFFFF_FFFF;
+      for (idx = 0; idx < (frame_len - 4); idx++) begin
+        crc_calc = crc32_update_byte_tb(crc_calc, rx_resp[idx]);
+      end
+      crc_calc = ~crc_calc;
+
+      fcs_got = {rx_resp[frame_len - 1], rx_resp[frame_len - 2],
+                 rx_resp[frame_len - 3], rx_resp[frame_len - 4]};
+
+      if (fcs_got !== crc_calc) begin
+        $display("FAIL: %s bad FCS got=%08x exp=%08x", name, fcs_got, crc_calc);
         $fatal(1);
       end
     end
@@ -332,6 +387,7 @@ module tb_esc_minimal;
     wait_tx_idle();
     expect_true(resp_len >= 29, "response length for APWR");
     expect_eq8(rx_resp[27], 8'h02, "WKC low APWR");
+    expect_fcs_valid(resp_len, "APWR regenerated FCS");
 
     clear_capture();
     send_ecat_single_datagram(8'h01, 16'h0000, 16'h0130, 1, 8'h00, 8'h00, 8'h00, 8'h00);
@@ -451,6 +507,7 @@ module tb_esc_minimal;
     expect_eq8(rx_resp[34], 8'h02, "AL status preamble");
     expect_eq8(rx_resp[35], 8'h01, "WKC low APRD preamble");
     expect_eq8(rx_resp[36], 8'h00, "WKC high APRD preamble");
+    expect_fcs_valid(resp_len, "APRD preamble regenerated FCS");
 
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);
