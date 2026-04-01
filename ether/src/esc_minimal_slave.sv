@@ -84,6 +84,8 @@ module esc_minimal_slave #(
 
   logic [15:0] byte_idx;
   logic [15:0] frame_offset;
+  logic has_preamble;
+  logic preamble_valid;
   logic [7:0] eth_type_hi;
   logic is_ethercat;
   logic [7:0] cmd_reg;
@@ -240,6 +242,8 @@ module esc_minimal_slave #(
 
       byte_idx <= 16'd0;
       frame_offset <= 16'd0;
+      has_preamble <= 1'b0;
+      preamble_valid <= 1'b1;
       eth_type_hi <= 8'h00;
       is_ethercat <= 1'b0;
       cmd_reg <= 8'h00;
@@ -279,6 +283,8 @@ module esc_minimal_slave #(
       if (rx_dv && !rx_dv_d) begin
         byte_idx <= 16'd0;
         frame_offset <= 16'd0;
+        has_preamble <= 1'b0;
+        preamble_valid <= 1'b1;
         eth_type_hi <= 8'h00;
         is_ethercat <= 1'b0;
         cmd_reg <= 8'h00;
@@ -318,17 +324,33 @@ module esc_minimal_slave #(
           rx_byte = {rxd, rx_low_nibble};
           tx_byte = rx_byte;
 
+          if (!has_preamble && (byte_idx <= 16'd7)) begin
+            if (preamble_valid) begin
+              if (byte_idx < 16'd7) begin
+                if (rx_byte != 8'h55) begin
+                  preamble_valid <= 1'b0;
+                end
+              end else begin
+                if (rx_byte == 8'hD5) begin
+                  has_preamble <= 1'b1;
+                end else begin
+                  preamble_valid <= 1'b0;
+                end
+              end
+            end
+          end
+
           if ((byte_idx == 16'd12) || (byte_idx == 16'd20)) begin
             eth_type_hi <= rx_byte;
           end
-          if ((byte_idx == 16'd13) && !is_ethercat) begin
+          if ((byte_idx == 16'd13) && !is_ethercat && !has_preamble) begin
             if ((eth_type_hi == 8'h88) && (rx_byte == 8'hA4)) begin
               is_ethercat <= 1'b1;
               frame_offset <= 16'd0;
               debug_ethercat <= 1'b1;
             end
           end
-          if ((byte_idx == 16'd21) && !is_ethercat) begin
+          if ((byte_idx == 16'd21) && !is_ethercat && has_preamble) begin
             if ((eth_type_hi == 8'h88) && (rx_byte == 8'hA4)) begin
               is_ethercat <= 1'b1;
               frame_offset <= 16'd8;

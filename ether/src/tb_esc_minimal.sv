@@ -216,6 +216,69 @@ module tb_esc_minimal;
     end
   endtask
 
+  task automatic send_ecat_single_datagram_with_preamble(
+      input logic [7:0] cmd,
+      input logic [15:0] adp,
+      input logic [15:0] ado,
+      input int unsigned payload_len,
+      input logic [7:0] payload0
+  );
+    logic [15:0] ecat_len;
+    logic [15:0] dlen_field;
+    begin
+      ecat_len = 16'(10 + payload_len + 2);
+      dlen_field = payload_len[15:0];
+
+      send_byte(8'h55);
+      send_byte(8'h55);
+      send_byte(8'h55);
+      send_byte(8'h55);
+      send_byte(8'h55);
+      send_byte(8'h55);
+      send_byte(8'h55);
+      send_byte(8'hD5);
+
+      // Keep 0x88A4 at byte 12/13 (in destination MAC) to ensure
+      // parser does not falsely classify this as non-preamble EtherCAT.
+      send_byte(8'h01);
+      send_byte(8'h02);
+      send_byte(8'h03);
+      send_byte(8'h04);
+      send_byte(8'h88);
+      send_byte(8'hA4);
+
+      send_byte(8'h10);
+      send_byte(8'h20);
+      send_byte(8'h30);
+      send_byte(8'h40);
+      send_byte(8'h50);
+      send_byte(8'h60);
+      send_byte(8'h88);
+      send_byte(8'hA4);
+
+      send_byte(ecat_len[7:0]);
+      send_byte({4'h1, ecat_len[10:8]});
+
+      send_byte(cmd);
+      send_byte(8'h01);
+      send_byte(adp[7:0]);
+      send_byte(adp[15:8]);
+      send_byte(ado[7:0]);
+      send_byte(ado[15:8]);
+      send_byte(dlen_field[7:0]);
+      send_byte({5'b00000, dlen_field[10:8]});
+      send_byte(8'h00);
+      send_byte(8'h00);
+
+      if (payload_len > 0) send_byte(payload0);
+
+      send_byte(8'h00);
+      send_byte(8'h00);
+
+      end_frame();
+    end
+  endtask
+
   task automatic expect_eq8(
       input logic [7:0] got,
       input logic [7:0] exp,
@@ -379,6 +442,15 @@ module tb_esc_minimal;
     expect_eq8(rx_resp[26], 8'h00, "DLSTATUS low");
     expect_eq8(rx_resp[27], 8'h02, "DLSTATUS high (port0 link active)");
     expect_eq8(rx_resp[28], 8'h01, "WKC low FPRD DLSTATUS");
+
+    $display("TEST10: APRD with preamble and MAC 0x88A4 false-positive pattern");
+    clear_capture();
+    send_ecat_single_datagram_with_preamble(8'h01, 16'h0000, 16'h0130, 1, 8'h00);
+    wait_tx_idle();
+    expect_true(resp_len >= 37, "response length for APRD preamble");
+    expect_eq8(rx_resp[34], 8'h02, "AL status preamble");
+    expect_eq8(rx_resp[35], 8'h01, "WKC low APRD preamble");
+    expect_eq8(rx_resp[36], 8'h00, "WKC high APRD preamble");
 
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);
