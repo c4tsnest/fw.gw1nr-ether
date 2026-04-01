@@ -105,13 +105,12 @@ module top (
     ) u_led (
             .clk    (clock),
             .rst_n  (rst_n),
-            .link0  (link_b),
-            .link1  (link_c),
-            .rx_act0(rxdv_b),
-            .rx_act1(rxdv_c),
-            .dbg0   (debug_ethercat),
-            .dbg1   (debug_addr_match),
-            .dbg2   (debug_wkc_inc),
+            .link_a (link_a),
+            .link_b (link_b),
+            .link_c (link_c),
+            .act_a  (rxdv_a | txen_a),
+            .act_b  (rxdv_b | txen_b),
+            .act_c  (rxdv_c | txen_c),
             .led    (led)
     );
 

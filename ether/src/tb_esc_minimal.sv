@@ -398,7 +398,7 @@ module tb_esc_minimal;
     send_ecat_single_datagram(8'h02, 16'h0000, 16'h0120, 1, 8'h02, 8'h00, 8'h00, 8'h00);
     wait_tx_idle();
     expect_true(resp_len >= 29, "response length for APWR");
-    expect_eq8(rx_resp[27], 8'h02, "WKC low APWR");
+    expect_eq8(rx_resp[27], 8'h01, "WKC low APWR");
     expect_fcs_valid(resp_len, "APWR regenerated FCS");
 
     clear_capture();
@@ -444,7 +444,7 @@ module tb_esc_minimal;
     send_ecat_single_datagram(8'h02, 16'h0000, 16'h0010, 2, 8'h01, 8'h10, 8'h00, 8'h00);
     wait_tx_idle();
     expect_true(resp_len >= 30, "response length for APWR STADR");
-    expect_eq8(rx_resp[28], 8'h02, "WKC low APWR STADR");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low APWR STADR");
 
     clear_capture();
     send_ecat_single_datagram(8'h01, 16'h0000, 16'h0010, 2, 8'h00, 8'h00, 8'h00, 8'h00);
@@ -469,7 +469,7 @@ module tb_esc_minimal;
                    8'hDE, 8'hAD, 8'hBE, 8'hEF);
     wait_tx_idle();
     expect_true(resp_len >= 36, "response length for BWR 8-byte");
-    expect_eq8(rx_resp[34], 8'h02, "WKC low BWR 8-byte");
+    expect_eq8(rx_resp[34], 8'h01, "WKC low BWR 8-byte");
 
     clear_capture();
     send_ecat_single_datagram8(8'h04, 16'h1001, 16'h0800, 8,

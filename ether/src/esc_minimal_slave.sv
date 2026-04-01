@@ -97,6 +97,8 @@ module esc_minimal_slave #(
   logic addr_match;
   logic do_read;
   logic do_write;
+  logic read_success;
+  logic write_success;
   logic is_auto_inc_cmd;
   logic adp_dec_borrow;
   logic [1:0] wkc_inc_value;
@@ -284,6 +286,8 @@ module esc_minimal_slave #(
       addr_match <= 1'b0;
       do_read <= 1'b0;
       do_write <= 1'b0;
+      read_success <= 1'b0;
+      write_success <= 1'b0;
       is_auto_inc_cmd <= 1'b0;
       adp_dec_borrow <= 1'b0;
       wkc_inc_value <= 2'd0;
@@ -335,6 +339,8 @@ module esc_minimal_slave #(
         addr_match <= 1'b0;
         do_read <= 1'b0;
         do_write <= 1'b0;
+        read_success <= 1'b0;
+        write_success <= 1'b0;
         is_auto_inc_cmd <= 1'b0;
         adp_dec_borrow <= 1'b0;
         wkc_inc_value <= 2'd0;
@@ -369,6 +375,7 @@ module esc_minimal_slave #(
           logic [15:0] ado_hi_idx;
           logic [15:0] dlen_lo_idx;
           logic [15:0] dlen_hi_idx;
+          logic [1:0] wkc_inc_calc;
           logic low_overflow;
 
           rx_byte = {rxd, rx_low_nibble};
@@ -424,31 +431,24 @@ module esc_minimal_slave #(
                 case (rx_byte)
                   CMD_APRD: begin
                     is_auto_inc_cmd <= 1'b1;
-                    wkc_inc_value <= 2'd1;
                   end
                   CMD_APWR: begin
                     is_auto_inc_cmd <= 1'b1;
-                    wkc_inc_value <= 2'd2;
                   end
                   CMD_APRW: begin
                     is_auto_inc_cmd <= 1'b1;
-                    wkc_inc_value <= 2'd3;
                   end
                   CMD_FPRD, CMD_BRD: begin
                     is_auto_inc_cmd <= 1'b0;
-                    wkc_inc_value <= 2'd1;
                   end
                   CMD_FPWR, CMD_BWR: begin
                     is_auto_inc_cmd <= 1'b0;
-                    wkc_inc_value <= 2'd2;
                   end
                   CMD_FPRW, CMD_BRW: begin
                     is_auto_inc_cmd <= 1'b0;
-                    wkc_inc_value <= 2'd3;
                   end
                   default: begin
                     is_auto_inc_cmd <= 1'b0;
-                    wkc_inc_value <= 2'd0;
                   end
                 endcase
             end else if (byte_idx == adp_lo_idx) begin
@@ -478,6 +478,8 @@ module esc_minimal_slave #(
                 station_addr = reg_rd16(REG_STATION_ADDR);
                 do_read <= 1'b0;
                 do_write <= 1'b0;
+                read_success <= 1'b0;
+                write_success <= 1'b0;
                 addr_match_computed = 1'b0;
                 
                 case (cmd_reg)
@@ -537,6 +539,7 @@ module esc_minimal_slave #(
 
               if (do_write) begin
                 if (reg_can_write(byte_addr)) begin
+                  write_success <= 1'b1;
                   if (addr_in_window(byte_addr, REG_CORE_BASE, CORE_REG_BYTES)) begin
                     reg_core[byte_addr - REG_CORE_BASE] <= rx_byte;
                   end else if (addr_in_window(byte_addr, REG_SM_BASE, SM_REG_BYTES)) begin
@@ -556,6 +559,7 @@ module esc_minimal_slave #(
 
               if (do_read) begin
                 if (reg_can_read(byte_addr)) begin
+                  read_success <= 1'b1;
                   tx_byte = reg_rd8(byte_addr);
                 end else begin
                   tx_byte = 8'h00;
@@ -564,8 +568,30 @@ module esc_minimal_slave #(
             end
 
             if (addr_match && (byte_idx == wkc_start_idx)) begin
-              tx_byte = rx_byte + {6'd0, wkc_inc_value};
-              low_overflow = ({1'b0, rx_byte} + {7'd0, wkc_inc_value}) > 9'h0ff;
+              case (cmd_reg)
+                CMD_APRD, CMD_FPRD, CMD_BRD: begin
+                  wkc_inc_calc = read_success ? 2'd1 : 2'd0;
+                end
+                CMD_APWR, CMD_FPWR, CMD_BWR: begin
+                  wkc_inc_calc = write_success ? 2'd1 : 2'd0;
+                end
+                CMD_APRW, CMD_FPRW, CMD_BRW: begin
+                  wkc_inc_calc = 2'd0;
+                  if (read_success) begin
+                    wkc_inc_calc = wkc_inc_calc + 2'd1;
+                  end
+                  if (write_success) begin
+                    wkc_inc_calc = wkc_inc_calc + 2'd2;
+                  end
+                end
+                default: begin
+                  wkc_inc_calc = 2'd0;
+                end
+              endcase
+
+              wkc_inc_value <= wkc_inc_calc;
+              tx_byte = rx_byte + {6'd0, wkc_inc_calc};
+              low_overflow = ({1'b0, rx_byte} + {7'd0, wkc_inc_calc}) > 9'h0ff;
               wkc_carry <= low_overflow;
               // Capture WKC low byte for later assembly
               debug_wkc_value[7:0] <= tx_byte;
