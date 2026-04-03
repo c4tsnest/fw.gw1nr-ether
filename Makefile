@@ -1,87 +1,73 @@
-# Open-source build flow for Gowin GW1NR-9 (Tang Nano 9K compatible)
-# Usage examples:
-#   make synth
-#   make pnr
-#   make pack
-#   make flash
-#   make clean
+GW_SH            ?= /opt/gowin/IDE/bin/gw_sh
+QT_QPA_PLATFORM  ?= offscreen
+GOWIN_PROJECT    ?= gowin/ether.gprj
+GOWIN_FLOW_TCL   ?= gowin/run_flow.tcl
+BITSTREAM_FS     ?= gowin/impl/pnr/ether.fs
+BOARD            ?= tangnano9k
 
-OSS_CAD_SUITE ?= /opt/oss-cad-suite
-export PATH := $(OSS_CAD_SUITE)/bin:$(PATH)
+SIM_OUT_DIR      ?= sim/out
+SIM_TB           ?= sim/tb_esc_minimal.sv
+SIM_SRCS         ?= src/esc_al_fsm.sv src/esc_minimal_slave.sv
+SIM_BIN          ?= $(SIM_OUT_DIR)/esc_sim.out
+SIM_VCD          ?= $(SIM_OUT_DIR)/waveform.vcd
 
-TOP            ?= top
-BUILD_DIR      ?= impl_oss
-CST            ?= gowin/ether.cst
-DEVICE         ?= GW1NR-LV9QN88PC6/I5
-PACK_DEVICE    ?= GW1NR-9C
-NEXTPNR_DEVICE ?= GW1NR-9
-NEXTPNR_FAMILY ?= GW1NR-9C
-BOARD          ?= tangnano9k
-FREQ_MHZ       ?= 27
+.PHONY: all help check-tools check-sim-tools synth pnr impl write write-flash sim sim-view clean
 
-NEXTPNR ?= $(shell command -v nextpnr-himbaechel 2>/dev/null || command -v nextpnr-gowin 2>/dev/null)
-
-RTL_SRCS := $(filter-out src/tb_%.sv src/ecat_%.sv,$(wildcard src/*.sv)) $(wildcard src/*.v)
-
-JSON_NETLIST   := $(BUILD_DIR)/$(TOP).json
-PNR_ASC        := $(BUILD_DIR)/$(TOP).asc
-BITSTREAM_FS   := $(BUILD_DIR)/$(TOP).fs
-
-.PHONY: all check-tools synth pnr pack flash write clean help
-
-all: pack
+all: impl
 
 help:
 	@echo "Targets:"
-	@echo "  make synth   - Run Yosys synthesis"
-	@echo "  make pnr     - Run nextpnr-gowin place & route"
-	@echo "  make pack    - Build Gowin .fs bitstream"
-	@echo "  make flash   - Program FPGA with openFPGALoader"
-	@echo "  make clean   - Remove generated files"
+	@echo "  make synth       - Run Gowin synthesis via gw_sh"
+	@echo "  make pnr         - Run Gowin synthesis + place&route via gw_sh"
+	@echo "  make impl        - Alias for full Gowin run (pnr target)"
+	@echo "  make write       - Program FPGA SRAM (openFPGALoader)"
+	@echo "  make write-flash - Program external flash"
+	@echo "  make sim         - Run Icarus simulation and emit VCD"
+	@echo "  make sim-view    - Open GTKWave for latest VCD"
+	@echo "  make clean       - Remove simulation outputs"
 	@echo ""
 	@echo "Useful overrides:"
-	@echo "  OSS_CAD_SUITE=/opt/oss-cad-suite"
-	@echo "  BUILD_DIR=impl_oss"
-	@echo "  TOP=top"
-	@echo "  NEXTPNR=nextpnr-himbaechel"
-	@echo "  DEVICE=GW1NR-LV9QN88PC6/I5"
-	@echo "  NEXTPNR_DEVICE=GW1NR-9"
-	@echo "  NEXTPNR_FAMILY=GW1NR-9C"
-	@echo "  PACK_DEVICE=GW1NR-9C"
+	@echo "  GW_SH=/opt/gowin/IDE/bin/gw_sh"
+	@echo "  QT_QPA_PLATFORM=offscreen"
+	@echo "  GOWIN_PROJECT=gowin/ether.gprj"
+	@echo "  BITSTREAM_FS=gowin/impl/pnr/ether.fs"
 	@echo "  BOARD=tangnano9k"
 
 check-tools:
-	@command -v yosys >/dev/null || (echo "ERROR: yosys not found in PATH" && exit 1)
-	@test -n "$(NEXTPNR)" || (echo "ERROR: no nextpnr for Gowin found (tried nextpnr-himbaechel, nextpnr-gowin)" && exit 1)
-	@command -v gowin_pack >/dev/null || (echo "ERROR: gowin_pack not found in PATH" && exit 1)
+	@test -x "$(GW_SH)" || (echo "ERROR: gw_sh not found at $(GW_SH)" && exit 1)
 	@command -v openFPGALoader >/dev/null || (echo "ERROR: openFPGALoader not found in PATH" && exit 1)
 
-$(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR)
+check-sim-tools:
+	@command -v iverilog >/dev/null || (echo "ERROR: iverilog not found in PATH" && exit 1)
+	@command -v vvp >/dev/null || (echo "ERROR: vvp not found in PATH" && exit 1)
 
-$(JSON_NETLIST): $(RTL_SRCS) | $(BUILD_DIR)
-	yosys -p "read_verilog -sv $(RTL_SRCS); synth_gowin -top $(TOP) -json $(JSON_NETLIST)"
+synth: check-tools
+	QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" synth
 
-synth: check-tools $(JSON_NETLIST)
+pnr: check-tools
+	QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" pnr
 
-$(PNR_ASC): $(JSON_NETLIST) $(CST)
-	@if [ "$(notdir $(NEXTPNR))" = "nextpnr-himbaechel" ]; then \
-		$(NEXTPNR) --json $(JSON_NETLIST) --write $(BUILD_DIR)/$(TOP)_pnr.json --device $(NEXTPNR_DEVICE) --vopt family=$(NEXTPNR_FAMILY) --vopt cst=$(CST) --freq $(FREQ_MHZ) --asc $(PNR_ASC); \
-	else \
-		$(NEXTPNR) --json $(JSON_NETLIST) --write $(BUILD_DIR)/$(TOP)_pnr.json --device $(DEVICE) --cst $(CST) --freq $(FREQ_MHZ) --asc $(PNR_ASC); \
-	fi
+impl: pnr
 
-pnr: check-tools $(PNR_ASC)
+write: check-tools
+	@test -f "$(BITSTREAM_FS)" || (echo "ERROR: bitstream not found: $(BITSTREAM_FS)" && exit 1)
+	openFPGALoader -b "$(BOARD)" "$(BITSTREAM_FS)"
 
-$(BITSTREAM_FS): $(PNR_ASC)
-	gowin_pack -d $(PACK_DEVICE) -o $(BITSTREAM_FS) $(PNR_ASC)
+write-flash: check-tools
+	@test -f "$(BITSTREAM_FS)" || (echo "ERROR: bitstream not found: $(BITSTREAM_FS)" && exit 1)
+	openFPGALoader -b "$(BOARD)" -f --external-flash "$(BITSTREAM_FS)"
 
-pack: check-tools $(BITSTREAM_FS)
+$(SIM_OUT_DIR):
+	@mkdir -p "$(SIM_OUT_DIR)"
 
-flash: check-tools pack
-	openFPGALoader -b $(BOARD) $(BITSTREAM_FS)
+sim: check-sim-tools $(SIM_OUT_DIR)
+	rm -f "$(SIM_BIN)" "$(SIM_VCD)"
+	iverilog -g2012 -o "$(SIM_BIN)" $(SIM_SRCS) "$(SIM_TB)"
+	vvp "$(SIM_BIN)"
 
-write: flash
+sim-view:
+	@test -f "$(SIM_VCD)" || (echo "ERROR: waveform not found: $(SIM_VCD). Run 'make sim' first." && exit 1)
+	gtkwave "$(SIM_VCD)" -A
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf "$(SIM_OUT_DIR)"
