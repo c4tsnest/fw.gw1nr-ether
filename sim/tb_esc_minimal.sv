@@ -568,6 +568,61 @@ module tb_esc_minimal;
     expect_eq8(rx_resp[29], 8'h78, "FMMU byte3 readback");
     expect_eq8(rx_resp[30], 8'h01, "WKC low APRD FMMU block");
 
+    $display("TEST14: EEPROM ownership handover/release and gated status writes");
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0500, 1, 8'h01, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[27], 8'h01, "WKC low APWR EEP_CFG handover");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0500, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(rx_resp[26][0] == 1'b1, "EEP_CFG 0x500 bit0 set");
+    expect_true(rx_resp[27][0] == 1'b1, "EEP_CFG 0x501 bit0 owner=PDI");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0502, 2, 8'h01, 8'h01, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[28], 8'h00, "WKC low APWR EEP_STAT blocked by PDI owner");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0500, 1, 8'h02, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[27], 8'h01, "WKC low APWR EEP_CFG force release");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0500, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true(rx_resp[26][0] == 1'b0, "EEP_CFG 0x500 bit0 cleared");
+    expect_true(rx_resp[27][0] == 1'b0, "EEP_CFG 0x501 bit0 owner=ECAT");
+
+    $display("TEST15: EEPROM address/data command path with fixed values");
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0504, 4, 8'h01, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[30], 8'h01, "WKC low APWR EEP_ADDR");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0503, 1, 8'h01, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[27], 8'h01, "WKC low APWR EEP_STAT cmd");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0502, 1, 8'h01, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[27], 8'h01, "WKC low APWR EEP_STAT start");
+
+    repeat (32) @(posedge clk);
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0508, 4, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h01, "EEP_DATA byte0");
+    expect_eq8(rx_resp[27], 8'h00, "EEP_DATA byte1");
+    expect_eq8(rx_resp[28], 8'h01, "EEP_DATA byte2");
+    expect_eq8(rx_resp[29], 8'h00, "EEP_DATA byte3");
+    expect_eq8(rx_resp[30], 8'h01, "WKC low APRD EEP_DATA");
+
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);
     $finish;

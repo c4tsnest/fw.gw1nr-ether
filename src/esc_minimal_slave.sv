@@ -43,6 +43,8 @@ module esc_minimal_slave #(
   localparam int unsigned REG_IRQ_MASK     = 16'h0200;
   localparam int unsigned REG_EEP_CFG      = 16'h0500;
   localparam int unsigned REG_EEP_STAT     = 16'h0502;
+  localparam int unsigned REG_EEP_ADDR     = 16'h0504;
+  localparam int unsigned REG_EEP_DATA     = 16'h0508;
   localparam int unsigned REG_FMMU_BASE    = 16'h0600;
   localparam int unsigned REG_FMMU_BYTES   = 64;
   localparam int unsigned REG_SM_BASE      = 16'h0800;
@@ -76,6 +78,10 @@ module esc_minimal_slave #(
   logic [15:0] reg_irq_mask;
   logic [15:0] reg_eep_cfg;
   logic [15:0] reg_eep_stat;
+  logic [31:0] reg_eep_addr;
+  logic [31:0] reg_eep_data;
+  logic [3:0] eep_busy_count;
+  logic eep_cmd_pending;
   logic [7:0] reg_pdi_control;
   logic [7:0] reg_dc_sync_act;
 
@@ -155,6 +161,10 @@ module esc_minimal_slave #(
       reg_rd8 = reg_eep_cfg[(addr - REG_EEP_CFG) * 8 +: 8];
     end else if ((addr >= REG_EEP_STAT) && (addr < (REG_EEP_STAT + 2))) begin
       reg_rd8 = reg_eep_stat[(addr - REG_EEP_STAT) * 8 +: 8];
+    end else if ((addr >= REG_EEP_ADDR) && (addr < (REG_EEP_ADDR + 4))) begin
+      reg_rd8 = reg_eep_addr[(addr - REG_EEP_ADDR) * 8 +: 8];
+    end else if ((addr >= REG_EEP_DATA) && (addr < (REG_EEP_DATA + 4))) begin
+      reg_rd8 = reg_eep_data[(addr - REG_EEP_DATA) * 8 +: 8];
     end else if (addr == REG_DC_SYNC_ACT) begin
       reg_rd8 = reg_dc_sync_act;
     end else if (addr_in_window(addr, REG_FMMU_BASE, REG_FMMU_BYTES)) begin
@@ -204,6 +214,15 @@ module esc_minimal_slave #(
     if ((addr >= REG_EEP_CFG) && (addr < (REG_EEP_CFG + 2))) begin
       reg_access = REG_RW;
     end
+    if ((addr >= REG_EEP_STAT) && (addr < (REG_EEP_STAT + 2))) begin
+      reg_access = REG_RW;
+    end
+    if ((addr >= REG_EEP_ADDR) && (addr < (REG_EEP_ADDR + 4))) begin
+      reg_access = REG_RW;
+    end
+    if ((addr >= REG_EEP_DATA) && (addr < (REG_EEP_DATA + 4))) begin
+      reg_access = REG_RW;
+    end
     if (addr_in_window(addr, REG_FMMU_BASE, REG_FMMU_BYTES)) begin
       reg_access = REG_RW;
     end
@@ -223,10 +242,6 @@ module esc_minimal_slave #(
     if (addr == REG_PDI_CONTROL) begin
       reg_access = REG_R;
     end
-    if ((addr >= REG_EEP_STAT) && (addr < (REG_EEP_STAT + 2))) begin
-      reg_access = REG_R;
-    end
-
     if ((addr >= REG_DC_BASE) && (addr <= REG_DC_END)) begin
       reg_access = REG_R;
     end
@@ -254,6 +269,20 @@ module esc_minimal_slave #(
 
   function automatic logic reg_can_write(input int unsigned addr);
     reg_can_write = (reg_access(addr) == REG_W) || (reg_access(addr) == REG_RW);
+  endfunction
+
+  function automatic logic [31:0] eeprom_fixed_read(input logic [31:0] addr);
+    logic [31:0] data;
+    begin
+      case (addr[15:0])
+        16'h0000: data = 32'hA55A_EC11;
+        16'h0001: data = 32'h0001_0001;
+        16'h0002: data = 32'h0000_0000;
+        16'h0004: data = 32'h0000_0001;
+        default: data = {16'hEC00, addr[15:0]};
+      endcase
+      eeprom_fixed_read = data;
+    end
   endfunction
 
   function automatic logic [31:0] crc32_update_byte(
@@ -324,6 +353,10 @@ module esc_minimal_slave #(
       reg_irq_mask <= 16'h0000;
       reg_eep_cfg <= 16'h0000;
       reg_eep_stat <= 16'h0000;
+      reg_eep_addr <= 32'h0000_0000;
+      reg_eep_data <= 32'h0000_0000;
+      eep_busy_count <= 4'd0;
+      eep_cmd_pending <= 1'b0;
       reg_pdi_control <= 8'h00;
       reg_dc_sync_act <= 8'h00;
 
@@ -384,6 +417,21 @@ module esc_minimal_slave #(
       dc_time_counter <= dc_time_counter + 64'd1;
       rx_dv_d <= rx_dv;
       al_req_valid <= 1'b0;
+
+      if (eep_busy_count != 4'd0) begin
+        eep_busy_count <= eep_busy_count - 4'd1;
+        reg_eep_stat[15] <= 1'b1;
+        if (eep_busy_count == 4'd1) begin
+          reg_eep_stat[15] <= 1'b0;
+          if (eep_cmd_pending) begin
+            if (reg_eep_stat[10:8] == 3'b001) begin
+              reg_eep_data <= eeprom_fixed_read(reg_eep_addr);
+            end
+            eep_cmd_pending <= 1'b0;
+            reg_eep_stat[0] <= 1'b0;
+          end
+        end
+      end
       
       // Default: clear all debug pulses each cycle
       debug_ethercat <= 1'b0;
@@ -447,11 +495,13 @@ module esc_minimal_slave #(
           logic [15:0] dlen_hi_idx;
           logic [1:0] wkc_inc_calc;
           logic low_overflow;
+          logic write_hit;
 
           rx_byte = {rxd, rx_low_nibble};
           tx_byte = rx_byte;
           emit_byte = 8'h00;
           emit_valid = 1'b0;
+          write_hit = 1'b0;
 
           if (!has_preamble && (byte_idx <= 16'd7)) begin
             if (preamble_valid) begin
@@ -609,19 +659,61 @@ module esc_minimal_slave #(
 
               if (do_write) begin
                 if (reg_can_write(byte_addr)) begin
-                  write_success <= 1'b1;
                   if (addr_in_window(byte_addr, REG_CORE_BASE, CORE_REG_BYTES)) begin
                     reg_core[byte_addr - REG_CORE_BASE] <= rx_byte;
+                    write_hit = 1'b1;
                   end else if (addr_in_window(byte_addr, REG_SM_BASE, SM_REG_BYTES)) begin
                     reg_sm[byte_addr - REG_SM_BASE] <= rx_byte;
+                    write_hit = 1'b1;
                   end else if (addr_in_window(byte_addr, REG_FMMU_BASE, REG_FMMU_BYTES)) begin
                     reg_fmmu[byte_addr - REG_FMMU_BASE] <= rx_byte;
+                    write_hit = 1'b1;
                   end else if ((byte_addr >= REG_IRQ_MASK) && (byte_addr < (REG_IRQ_MASK + 2))) begin
                     reg_irq_mask[(byte_addr - REG_IRQ_MASK) * 8 +: 8] <= rx_byte;
+                    write_hit = 1'b1;
                   end else if ((byte_addr >= REG_EEP_CFG) && (byte_addr < (REG_EEP_CFG + 2))) begin
-                    reg_eep_cfg[(byte_addr - REG_EEP_CFG) * 8 +: 8] <= rx_byte;
+                    if (byte_addr == REG_EEP_CFG) begin
+                      if (rx_byte[1]) begin
+                        reg_eep_cfg[0] <= 1'b0;
+                        reg_eep_cfg[8] <= 1'b0;
+                      end else if (rx_byte[0]) begin
+                        reg_eep_cfg[0] <= 1'b1;
+                        reg_eep_cfg[8] <= 1'b1;
+                      end
+                      write_hit = rx_byte[1] | rx_byte[0];
+                    end
+                  end else if ((byte_addr >= REG_EEP_STAT) && (byte_addr < (REG_EEP_STAT + 2))) begin
+                    if (reg_eep_cfg[8] == 1'b0) begin
+                      if (byte_addr == REG_EEP_STAT) begin
+                        reg_eep_stat[0] <= rx_byte[0];
+                        if (rx_byte[0] && !reg_eep_stat[15]) begin
+                          reg_eep_stat[15] <= 1'b1;
+                          eep_busy_count <= 4'd8;
+                          eep_cmd_pending <= 1'b1;
+                        end
+                        write_hit = 1'b1;
+                      end else begin
+                        reg_eep_stat[10:8] <= rx_byte[2:0];
+                        write_hit = 1'b1;
+                      end
+                    end
+                  end else if ((byte_addr >= REG_EEP_ADDR) && (byte_addr < (REG_EEP_ADDR + 4))) begin
+                    if (reg_eep_cfg[8] == 1'b0) begin
+                      reg_eep_addr[(byte_addr - REG_EEP_ADDR) * 8 +: 8] <= rx_byte;
+                      write_hit = 1'b1;
+                    end
+                  end else if ((byte_addr >= REG_EEP_DATA) && (byte_addr < (REG_EEP_DATA + 4))) begin
+                    if (reg_eep_cfg[8] == 1'b0) begin
+                      reg_eep_data[(byte_addr - REG_EEP_DATA) * 8 +: 8] <= rx_byte;
+                      write_hit = 1'b1;
+                    end
                   end else if (byte_addr == REG_DC_SYNC_ACT) begin
                     reg_dc_sync_act <= rx_byte;
+                    write_hit = 1'b1;
+                  end
+
+                  if (write_hit) begin
+                    write_success <= 1'b1;
                   end
                 end
                 if (byte_addr == REG_AL_CONTROL) begin
