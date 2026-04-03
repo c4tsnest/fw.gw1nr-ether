@@ -10,9 +10,6 @@ if {[llength $argv] >= 2} {
 }
 
 proc try_open_project {project_file} {
-    if {[catch {open_project -file $project_file} err] == 0} {
-        return
-    }
     if {[catch {open_project $project_file} err2] == 0} {
         return
     }
@@ -22,34 +19,21 @@ proc try_open_project {project_file} {
     exit 2
 }
 
-proc try_run_candidates {candidates} {
-    foreach candidate $candidates {
-        if {[catch {eval $candidate} err] == 0} {
-            puts "Executed: $candidate"
-            return
-        }
-        puts "Attempt failed: $candidate ($err)"
-    }
-    puts stderr "No compatible run command worked in this gw_sh environment"
-    exit 3
-}
-
 try_open_project $project_file
 
 switch -- $step {
     synth {
-        try_run_candidates {
-            {run Synthesis}
-            {run synthesis}
-            {run syn}
-            {run all}
+        if {[catch {run syn} err] != 0} {
+            puts stderr "Failed to run synthesis (run syn): $err"
+            catch {close_project}
+            exit 3
         }
     }
     pnr - impl - all {
-        try_run_candidates {
-            {run Pnr}
-            {run pnr}
-            {run all}
+        if {[catch {run pnr} err] != 0} {
+            puts stderr "Failed to run PnR (run pnr): $err"
+            catch {close_project}
+            exit 3
         }
     }
     default {

@@ -1,5 +1,9 @@
 GW_SH            ?= /opt/gowin/IDE/bin/gw_sh
-QT_QPA_PLATFORM  ?= offscreen
+GOWIN_IDE_ROOT   ?= /opt/gowin/IDE
+GOWIN_XDG_SESSION ?= xcb
+QT_QPA_PLATFORM  ?= xcb
+GOWIN_LD_LIB     ?= $(GOWIN_IDE_ROOT)/lib
+GOWIN_QT_PLUGINS ?= $(GOWIN_IDE_ROOT)/lib/Qt/plugins
 GOWIN_PROJECT    ?= gowin/ether.gprj
 GOWIN_FLOW_TCL   ?= gowin/run_flow.tcl
 BITSTREAM_FS     ?= gowin/impl/pnr/ether.fs
@@ -28,7 +32,9 @@ help:
 	@echo ""
 	@echo "Useful overrides:"
 	@echo "  GW_SH=/opt/gowin/IDE/bin/gw_sh"
-	@echo "  QT_QPA_PLATFORM=offscreen"
+	@echo "  GOWIN_IDE_ROOT=/opt/gowin/IDE"
+	@echo "  GOWIN_XDG_SESSION=xcb"
+	@echo "  QT_QPA_PLATFORM=xcb"
 	@echo "  GOWIN_PROJECT=gowin/ether.gprj"
 	@echo "  BITSTREAM_FS=gowin/impl/pnr/ether.fs"
 	@echo "  BOARD=tangnano9k"
@@ -41,11 +47,12 @@ check-sim-tools:
 	@command -v iverilog >/dev/null || (echo "ERROR: iverilog not found in PATH" && exit 1)
 	@command -v vvp >/dev/null || (echo "ERROR: vvp not found in PATH" && exit 1)
 
+
 synth: check-tools
-	QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" synth
+	XDG_SESSION_TYPE=$(GOWIN_XDG_SESSION) LD_LIBRARY_PATH="$(GOWIN_LD_LIB):$$LD_LIBRARY_PATH" QT_PLUGIN_PATH="$(GOWIN_QT_PLUGINS)" QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" synth
 
 pnr: check-tools
-	QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" pnr
+	XDG_SESSION_TYPE=$(GOWIN_XDG_SESSION) LD_LIBRARY_PATH="$(GOWIN_LD_LIB):$$LD_LIBRARY_PATH" QT_PLUGIN_PATH="$(GOWIN_QT_PLUGINS)" QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" pnr
 
 impl: pnr
 
