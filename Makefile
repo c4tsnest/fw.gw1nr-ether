@@ -11,7 +11,7 @@ export PATH := $(OSS_CAD_SUITE)/bin:$(PATH)
 
 TOP            ?= top
 BUILD_DIR      ?= impl_oss
-CST            ?= src/ether.cst
+CST            ?= gowin/ether.cst
 DEVICE         ?= GW1NR-LV9QN88PC6/I5
 PACK_DEVICE    ?= GW1NR-9C
 NEXTPNR_DEVICE ?= GW1NR-9

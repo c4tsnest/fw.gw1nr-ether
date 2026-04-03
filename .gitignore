@@ -1,7 +1,9 @@
 
-impl/
-
-*.out
+gowin/impl/
+*.gprj.user
+*.vcd
+*.gtkw
+sim/out/
 
 *~
 *.swp

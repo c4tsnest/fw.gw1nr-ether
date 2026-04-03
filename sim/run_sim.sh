@@ -2,13 +2,17 @@
 
 set -e
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+OUT_DIR="$SCRIPT_DIR/out"
+mkdir -p "$OUT_DIR"
+
 MODULE_FILES=(
-    "../ether/src/esc_al_fsm.sv"
-    "../ether/src/esc_minimal_slave.sv"
+    "$SCRIPT_DIR/../src/esc_al_fsm.sv"
+    "$SCRIPT_DIR/../src/esc_minimal_slave.sv"
 )
-TB_FILE="../ether/src/tb_esc_minimal.sv"
-OUTPUT_BIN="esc_sim.out"
-WAVE_FILE="waveform.vcd"
+TB_FILE="$SCRIPT_DIR/tb_esc_minimal.sv"
+OUTPUT_BIN="$OUT_DIR/esc_sim.out"
+WAVE_FILE="$OUT_DIR/waveform.vcd"
 
 if [ -f "$OUTPUT_BIN" ]; then
     rm "$OUTPUT_BIN"
