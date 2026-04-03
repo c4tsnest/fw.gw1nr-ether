@@ -492,7 +492,7 @@ module tb_esc_minimal;
     send_ecat_single_datagram(8'h04, 16'h1001, 16'h0008, 2, 8'h00, 8'h00, 8'h00, 8'h00);
     wait_tx_idle();
     expect_true(resp_len >= 30, "response length for FPRD ESCSUP");
-    expect_eq8(rx_resp[26], 8'h04, "ESCSUP low (DC support bit)");
+    expect_eq8(rx_resp[26], 8'h00, "ESCSUP low (DC support disabled)");
     expect_eq8(rx_resp[27], 8'h00, "ESCSUP high");
     expect_eq8(rx_resp[28], 8'h01, "WKC low FPRD ESCSUP");
 
@@ -520,6 +520,53 @@ module tb_esc_minimal;
     expect_eq8(rx_resp[35], 8'h01, "WKC low APRD preamble");
     expect_eq8(rx_resp[36], 8'h00, "WKC high APRD preamble");
     expect_fcs_valid(resp_len, "APRD preamble regenerated FCS");
+
+    $display("TEST11: Strict RO identity register (TYPE) does not change on write");
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0000, 2, 8'hAA, 8'h55, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[28], 8'h00, "WKC low APWR TYPE RO");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0000, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h11, "TYPE low stays RO");
+    expect_eq8(rx_resp[27], 8'h01, "TYPE high stays RO");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low APRD TYPE");
+
+    $display("TEST12: IRQMASK RW register write/readback");
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0200, 2, 8'h04, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[28], 8'h01, "WKC low APWR IRQMASK");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0200, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h04, "IRQMASK low readback");
+    expect_eq8(rx_resp[27], 8'h00, "IRQMASK high readback");
+    expect_eq8(rx_resp[28], 8'h01, "WKC low APRD IRQMASK");
+
+    $display("TEST13: PDI control RO and FMMU RW touched registers");
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0140, 1, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h00, "PDICTL default");
+    expect_eq8(rx_resp[27], 8'h01, "WKC low APRD PDICTL");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0600, 4, 8'h12, 8'h34, 8'h56, 8'h78);
+    wait_tx_idle();
+    expect_eq8(rx_resp[30], 8'h01, "WKC low APWR FMMU block");
+
+    clear_capture();
+    send_ecat_single_datagram(8'h01, 16'h0000, 16'h0600, 4, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h12, "FMMU byte0 readback");
+    expect_eq8(rx_resp[27], 8'h34, "FMMU byte1 readback");
+    expect_eq8(rx_resp[28], 8'h56, "FMMU byte2 readback");
+    expect_eq8(rx_resp[29], 8'h78, "FMMU byte3 readback");
+    expect_eq8(rx_resp[30], 8'h01, "WKC low APRD FMMU block");
 
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);

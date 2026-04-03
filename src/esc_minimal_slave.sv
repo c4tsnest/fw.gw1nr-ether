@@ -29,16 +29,27 @@ module esc_minimal_slave #(
   localparam logic [7:0] CMD_BRW  = 8'h09;
 
   localparam int unsigned REG_STATION_ADDR = 16'h0010;
+  localparam int unsigned REG_ALIAS        = 16'h0012;
   localparam int unsigned REG_PORTDES      = 16'h0007;
   localparam int unsigned REG_ESCSUP       = 16'h0008;
+  localparam int unsigned REG_DL_CONTROL   = 16'h0100;
+  localparam int unsigned REG_DL_PORT      = 16'h0101;
+  localparam int unsigned REG_DL_ALIAS     = 16'h0103;
   localparam int unsigned REG_DL_STATUS    = 16'h0110;
   localparam int unsigned REG_AL_CONTROL   = 16'h0120;
   localparam int unsigned REG_AL_STATUS    = 16'h0130;
   localparam int unsigned REG_AL_STATUS_CD = 16'h0134;
+  localparam int unsigned REG_PDI_CONTROL  = 16'h0140;
+  localparam int unsigned REG_IRQ_MASK     = 16'h0200;
+  localparam int unsigned REG_EEP_CFG      = 16'h0500;
+  localparam int unsigned REG_EEP_STAT     = 16'h0502;
+  localparam int unsigned REG_FMMU_BASE    = 16'h0600;
+  localparam int unsigned REG_FMMU_BYTES   = 64;
   localparam int unsigned REG_SM_BASE      = 16'h0800;
   localparam int unsigned REG_DC_BASE      = 16'h0900;
   localparam int unsigned REG_DC_END       = 16'h093f;
   localparam int unsigned REG_DC_TIME      = 16'h0910;
+  localparam int unsigned REG_DC_SYNC_ACT  = 16'h0981;
   localparam int unsigned REG_GPIO_OUT     = 16'h0f00;
   localparam int unsigned REG_GPIO_IN      = 16'h0f10;
   localparam int unsigned REG_DEBUG_WKC    = 16'h0f20;
@@ -59,7 +70,14 @@ module esc_minimal_slave #(
 
   logic [7:0] reg_core[0:CORE_REG_BYTES-1];
   logic [7:0] reg_sm[0:SM_REG_BYTES-1];
+  logic [7:0] reg_fmmu[0:REG_FMMU_BYTES-1];
   logic [7:0] tx_fifo[0:TX_FIFO_DEPTH-1];
+
+  logic [15:0] reg_irq_mask;
+  logic [15:0] reg_eep_cfg;
+  logic [15:0] reg_eep_stat;
+  logic [7:0] reg_pdi_control;
+  logic [7:0] reg_dc_sync_act;
 
   logic [15:0] debug_wkc_value;
 
@@ -129,6 +147,18 @@ module esc_minimal_slave #(
       reg_rd8 = link_up ? DLSTATUS_PORT0_LINK[7:0] : 8'h00;
     end else if (addr == (REG_DL_STATUS + 1)) begin
       reg_rd8 = link_up ? DLSTATUS_PORT0_LINK[15:8] : 8'h00;
+    end else if (addr == REG_PDI_CONTROL) begin
+      reg_rd8 = reg_pdi_control;
+    end else if ((addr >= REG_IRQ_MASK) && (addr < (REG_IRQ_MASK + 2))) begin
+      reg_rd8 = reg_irq_mask[(addr - REG_IRQ_MASK) * 8 +: 8];
+    end else if ((addr >= REG_EEP_CFG) && (addr < (REG_EEP_CFG + 2))) begin
+      reg_rd8 = reg_eep_cfg[(addr - REG_EEP_CFG) * 8 +: 8];
+    end else if ((addr >= REG_EEP_STAT) && (addr < (REG_EEP_STAT + 2))) begin
+      reg_rd8 = reg_eep_stat[(addr - REG_EEP_STAT) * 8 +: 8];
+    end else if (addr == REG_DC_SYNC_ACT) begin
+      reg_rd8 = reg_dc_sync_act;
+    end else if (addr_in_window(addr, REG_FMMU_BASE, REG_FMMU_BYTES)) begin
+      reg_rd8 = reg_fmmu[addr - REG_FMMU_BASE];
     end else if (addr == REG_AL_STATUS) begin
       reg_rd8 = {4'b0, al_state};
     end else if (addr == REG_AL_STATUS_CD) begin
@@ -168,6 +198,34 @@ module esc_minimal_slave #(
     if ((addr >= REG_GPIO_OUT) && (addr < (REG_GPIO_OUT + GPIO_OUT_BYTES))) begin
       reg_access = REG_RW;
     end
+    if ((addr >= REG_IRQ_MASK) && (addr < (REG_IRQ_MASK + 2))) begin
+      reg_access = REG_RW;
+    end
+    if ((addr >= REG_EEP_CFG) && (addr < (REG_EEP_CFG + 2))) begin
+      reg_access = REG_RW;
+    end
+    if (addr_in_window(addr, REG_FMMU_BASE, REG_FMMU_BYTES)) begin
+      reg_access = REG_RW;
+    end
+    if (addr == REG_DC_SYNC_ACT) begin
+      reg_access = REG_RW;
+    end
+
+    if ((addr == 16'h0000) || (addr == 16'h0001)) begin
+      reg_access = REG_R;
+    end
+    if (addr == REG_PORTDES) begin
+      reg_access = REG_R;
+    end
+    if ((addr == REG_ESCSUP) || (addr == (REG_ESCSUP + 1))) begin
+      reg_access = REG_R;
+    end
+    if (addr == REG_PDI_CONTROL) begin
+      reg_access = REG_R;
+    end
+    if ((addr >= REG_EEP_STAT) && (addr < (REG_EEP_STAT + 2))) begin
+      reg_access = REG_R;
+    end
 
     if ((addr >= REG_DC_BASE) && (addr <= REG_DC_END)) begin
       reg_access = REG_R;
@@ -183,6 +241,10 @@ module esc_minimal_slave #(
     end
     if ((addr >= REG_GPIO_IN) && (addr < (REG_GPIO_IN + GPIO_IN_BYTES))) begin
       reg_access = REG_R;
+    end
+
+    if (addr == REG_AL_CONTROL) begin
+      reg_access = REG_W;
     end
   endfunction
 
@@ -232,11 +294,14 @@ module esc_minimal_slave #(
       for (i = 0; i < SM_REG_BYTES; i++) begin
         reg_sm[i] <= 8'h00;
       end
+      for (i = 0; i < REG_FMMU_BYTES; i++) begin
+        reg_fmmu[i] <= 8'h00;
+      end
 
       reg_core[16'h0000] <= 8'h11;
       reg_core[16'h0001] <= 8'h01;
       reg_core[REG_PORTDES] <= 8'h01;
-      reg_core[REG_ESCSUP] <= 8'h04;
+      reg_core[REG_ESCSUP] <= 8'h00;
       reg_core[REG_ESCSUP + 1] <= 8'h00;
       reg_core[16'h000a] <= 8'h00;
       reg_core[16'h000b] <= 8'h00;
@@ -256,6 +321,11 @@ module esc_minimal_slave #(
 
       dc_time_counter <= 64'd0;
       gpio_out <= '0;
+      reg_irq_mask <= 16'h0000;
+      reg_eep_cfg <= 16'h0000;
+      reg_eep_stat <= 16'h0000;
+      reg_pdi_control <= 8'h00;
+      reg_dc_sync_act <= 8'h00;
 
       rx_low_nibble <= 4'h0;
       rx_half <= 1'b0;
@@ -544,6 +614,14 @@ module esc_minimal_slave #(
                     reg_core[byte_addr - REG_CORE_BASE] <= rx_byte;
                   end else if (addr_in_window(byte_addr, REG_SM_BASE, SM_REG_BYTES)) begin
                     reg_sm[byte_addr - REG_SM_BASE] <= rx_byte;
+                  end else if (addr_in_window(byte_addr, REG_FMMU_BASE, REG_FMMU_BYTES)) begin
+                    reg_fmmu[byte_addr - REG_FMMU_BASE] <= rx_byte;
+                  end else if ((byte_addr >= REG_IRQ_MASK) && (byte_addr < (REG_IRQ_MASK + 2))) begin
+                    reg_irq_mask[(byte_addr - REG_IRQ_MASK) * 8 +: 8] <= rx_byte;
+                  end else if ((byte_addr >= REG_EEP_CFG) && (byte_addr < (REG_EEP_CFG + 2))) begin
+                    reg_eep_cfg[(byte_addr - REG_EEP_CFG) * 8 +: 8] <= rx_byte;
+                  end else if (byte_addr == REG_DC_SYNC_ACT) begin
+                    reg_dc_sync_act <= rx_byte;
                   end
                 end
                 if (byte_addr == REG_AL_CONTROL) begin
