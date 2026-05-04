@@ -9,44 +9,56 @@ GOWIN_FLOW_TCL   ?= gowin/run_flow.tcl
 BITSTREAM_FS     ?= gowin/impl/pnr/ether.fs
 BOARD            ?= tangnano9k
 
-SIM_OUT_DIR      ?= sim/out
-SIM_TB           ?= sim/tb_esc_minimal.sv
-SIM_SRCS         ?= src/esc_al_fsm.sv src/esc_minimal_slave.sv
-SIM_BIN          ?= $(SIM_OUT_DIR)/esc_sim.out
-SIM_VCD          ?= $(SIM_OUT_DIR)/waveform.vcd
+# ---- Icarus (iverilog) simulation ----
+IVERILOG_OUT_DIR  ?= sim/iverilog/out
+IVERILOG_TB       ?= sim/iverilog/tb_esc_minimal.sv
+IVERILOG_SRCS     ?= src/esc_al_fsm.sv src/esc_minimal_slave.sv
+IVERILOG_BIN      ?= $(IVERILOG_OUT_DIR)/esc_sim.out
+IVERILOG_VCD      ?= $(IVERILOG_OUT_DIR)/waveform.vcd
 
-.PHONY: all help check-tools check-sim-tools synth pnr impl write write-flash sim sim-view clean
+# ---- Verilator simulation ----
+VERILATOR_SRCS     ?= src/esc_al_fsm.sv src/esc_minimal_slave.sv
+VERILATOR_TOP      ?= esc_minimal_slave
+VERILATOR_TB_CPP   ?= sim/verilator/tb_esc_minimal.cpp
+VERILATOR_OUT_DIR  ?= sim/verilator/out
+VERILATOR_OBJ_DIR  ?= sim/verilator/obj_dir
+VERILATOR_BIN      ?= $(VERILATOR_OBJ_DIR)/V$(VERILATOR_TOP)
+VERILATOR_CFLAGS   += -CFLAGS "-O2 -Wall -Wextra"
+
+.PHONY: all help check-tools check-sim-tools check-verilator-tools synth pnr impl write write-flash
+.PHONY: sim sim-iverilog sim-verilator sim-view clean
 
 all: impl
 
 help:
 	@echo "Targets:"
-	@echo "  make synth       - Run Gowin synthesis via gw_sh"
-	@echo "  make pnr         - Run Gowin synthesis + place&route via gw_sh"
-	@echo "  make impl        - Alias for full Gowin run (pnr target)"
-	@echo "  make write       - Program FPGA SRAM (openFPGALoader)"
-	@echo "  make write-flash - Program external flash"
-	@echo "  make sim         - Run Icarus simulation and emit VCD"
-	@echo "  make sim-view    - Open GTKWave for latest VCD"
-	@echo "  make clean       - Remove simulation outputs"
+	@echo "  make synth         - Run Gowin synthesis via gw_sh"
+	@echo "  make pnr           - Run Gowin synthesis + place&route via gw_sh"
+	@echo "  make impl          - Alias for full Gowin run (pnr target)"
+	@echo "  make write         - Program FPGA SRAM (openFPGALoader)"
+	@echo "  make write-flash   - Program external flash"
+	@echo ""
+	@echo "  make sim           - Run Verilator simulation (default)"
+	@echo "  make sim-iverilog  - Run Icarus simulation"
+	@echo "  make sim-verilator - Run Verilator simulation"
+	@echo "  make sim-view      - Open GTKWave for latest VCD"
+	@echo "  make clean         - Remove simulation outputs"
 	@echo ""
 	@echo "Useful overrides:"
-	@echo "  GW_SH=/opt/gowin/IDE/bin/gw_sh"
-	@echo "  GOWIN_IDE_ROOT=/opt/gowin/IDE"
-	@echo "  GOWIN_XDG_SESSION=xcb"
-	@echo "  QT_QPA_PLATFORM=xcb"
-	@echo "  GOWIN_PROJECT=gowin/ether.gprj"
-	@echo "  BITSTREAM_FS=gowin/impl/pnr/ether.fs"
-	@echo "  BOARD=tangnano9k"
+	@echo "  GW_SH              - Path to Gowin gw_sh"
+	@echo "  BOARD              - openFPGALoader board name (default: tangnano9k)"
+	@echo "  VERILATOR_TRACE=1  - Enable VCD tracing in verilator sim"
 
 check-tools:
 	@test -x "$(GW_SH)" || (echo "ERROR: gw_sh not found at $(GW_SH)" && exit 1)
 	@command -v openFPGALoader >/dev/null || (echo "ERROR: openFPGALoader not found in PATH" && exit 1)
 
-check-sim-tools:
+check-iverilog-tools:
 	@command -v iverilog >/dev/null || (echo "ERROR: iverilog not found in PATH" && exit 1)
 	@command -v vvp >/dev/null || (echo "ERROR: vvp not found in PATH" && exit 1)
 
+check-verilator-tools:
+	@command -v verilator >/dev/null || (echo "ERROR: verilator not found in PATH" && exit 1)
 
 synth: check-tools
 	XDG_SESSION_TYPE=$(GOWIN_XDG_SESSION) LD_LIBRARY_PATH="$(GOWIN_LD_LIB):$$LD_LIBRARY_PATH" QT_PLUGIN_PATH="$(GOWIN_QT_PLUGINS)" QT_QPA_PLATFORM=$(QT_QPA_PLATFORM) "$(GW_SH)" "$(GOWIN_FLOW_TCL)" "$(GOWIN_PROJECT)" synth
@@ -64,17 +76,48 @@ write-flash: check-tools
 	@test -f "$(BITSTREAM_FS)" || (echo "ERROR: bitstream not found: $(BITSTREAM_FS)" && exit 1)
 	openFPGALoader -b "$(BOARD)" -f --external-flash "$(BITSTREAM_FS)"
 
-$(SIM_OUT_DIR):
-	@mkdir -p "$(SIM_OUT_DIR)"
+# ---- Verilator flow (default) ----
+$(VERILATOR_OUT_DIR):
+	@mkdir -p "$(VERILATOR_OUT_DIR)"
 
-sim: check-sim-tools $(SIM_OUT_DIR)
-	rm -f "$(SIM_BIN)" "$(SIM_VCD)"
-	iverilog -g2012 -o "$(SIM_BIN)" $(SIM_SRCS) "$(SIM_TB)"
-	vvp "$(SIM_BIN)"
+$(VERILATOR_BIN): check-verilator-tools $(VERILATOR_OUT_DIR) $(VERILATOR_SRCS) $(VERILATOR_TB_CPP)
+	rm -rf "$(VERILATOR_OBJ_DIR)"
+	verilator --cc --build -j \
+		$(if $(VERILATOR_TRACE),--trace,) \
+		$(VERILATOR_CFLAGS) \
+		-Wno-fatal \
+		--top-module $(VERILATOR_TOP) \
+		--exe $(VERILATOR_TB_CPP) \
+		-Mdir $(VERILATOR_OBJ_DIR) \
+		$(VERILATOR_SRCS)
+
+sim: sim-verilator
+
+sim-verilator: $(VERILATOR_BIN)
+	@mkdir -p "$(VERILATOR_OUT_DIR)"
+	cd "$(VERILATOR_OUT_DIR)" && \
+	../obj_dir/V$(VERILATOR_TOP) $(if $(VERILATOR_TRACE),+trace,) 2>&1
+
+# ---- Icarus flow ----
+$(IVERILOG_OUT_DIR):
+	@mkdir -p "$(IVERILOG_OUT_DIR)"
+
+sim-iverilog: check-iverilog-tools $(IVERILOG_OUT_DIR)
+	rm -f "$(IVERILOG_BIN)" "$(IVERILOG_VCD)"
+	iverilog -g2012 -o "$(IVERILOG_BIN)" $(IVERILOG_SRCS) "$(IVERILOG_TB)"
+	vvp "$(IVERILOG_BIN)" && mv waveform.vcd "$(IVERILOG_VCD)"
 
 sim-view:
-	@test -f "$(SIM_VCD)" || (echo "ERROR: waveform not found: $(SIM_VCD). Run 'make sim' first." && exit 1)
-	gtkwave "$(SIM_VCD)" -A
+	@( test -f "$(VERILATOR_OUT_DIR)/waveform.vcd" || test -f "$(IVERILOG_VCD)" ) || \
+		(echo "ERROR: no waveform found. Run 'make sim' or 'make sim-iverilog' first." && exit 1)
+	@if [ -f "$(VERILATOR_OUT_DIR)/waveform.vcd" ]; then \
+		gtkwave "$(VERILATOR_OUT_DIR)/waveform.vcd" -A; \
+	elif [ -f "$(IVERILOG_VCD)" ]; then \
+		gtkwave "$(IVERILOG_VCD)" -A; \
+	fi
 
 clean:
-	rm -rf "$(SIM_OUT_DIR)"
+	rm -rf "$(VERILATOR_OBJ_DIR)" "$(VERILATOR_OUT_DIR)" "$(IVERILOG_OUT_DIR)"
+
+# Keep backward-compatible aliases for old paths
+check-sim-tools: check-iverilog-tools

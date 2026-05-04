@@ -3,8 +3,11 @@ gowin/impl/
 *.gprj.user
 *.vcd
 *.gtkw
-sim/out/
 .envrc
+
+sim/iverilog/out/
+sim/verilator/obj_dir/
+sim/verilator/out/
 
 *~
 *.swp

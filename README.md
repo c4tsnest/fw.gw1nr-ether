@@ -30,7 +30,10 @@ src/
   led.sv                 # LED blink controller
 
 sim/
-  tb_esc_minimal.sv      # Self-checking testbench (15 tests)
+  iverilog/
+    tb_esc_minimal.sv     # Self-checking SV testbench (15 tests)
+  verilator/
+    tb_esc_minimal.cpp    # Self-checking C++ testbench (15 tests)
 
 gowin/
   ether.gprj             # Gowin IDE project file
@@ -46,14 +49,15 @@ doc/
 
 ### Prerequisites
 
-- **Simulation**: Icarus Verilog (`iverilog`, `vvp`), GTKWave
+- **Simulation**: Verilator (default) or Icarus Verilog (`iverilog`, `vvp`), GTKWave
 - **Synthesis/PnR**: Gowin IDE (`/opt/gowin/IDE/bin/gw_sh`)
 - **Programming**: openFPGALoader
 
 ### Simulation
 
 ```bash
-make sim          # Compile and run testbench
+make sim          # Verilator (default)
+make sim-iverilog # Icarus
 make sim-view     # Open waveform in GTKWave
 ```
 
