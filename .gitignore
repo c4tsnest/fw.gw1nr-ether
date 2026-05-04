@@ -4,6 +4,7 @@ gowin/impl/
 *.vcd
 *.gtkw
 sim/out/
+.envrc
 
 *~
 *.swp

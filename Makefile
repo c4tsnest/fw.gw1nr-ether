@@ -1,9 +1,9 @@
-GW_SH            ?= /opt/gowin/IDE/bin/gw_sh
-GOWIN_IDE_ROOT   ?= /opt/gowin/IDE
-GOWIN_XDG_SESSION ?= xcb
-QT_QPA_PLATFORM  ?= xcb
-GOWIN_LD_LIB     ?= $(GOWIN_IDE_ROOT)/lib
-GOWIN_QT_PLUGINS ?= $(GOWIN_IDE_ROOT)/lib/Qt/plugins
+GW_SH            := $(shell echo $${GW_SH:-/opt/gowin/IDE/bin/gw_sh})
+GOWIN_IDE_ROOT   := $(shell echo $${GOWIN_IDE_ROOT:-/opt/gowin/IDE})
+GOWIN_XDG_SESSION := $(shell echo $${GOWIN_XDG_SESSION:-xcb})
+QT_QPA_PLATFORM  := $(shell echo $${QT_QPA_PLATFORM:-xcb})
+GOWIN_LD_LIB     := $(shell echo $${GOWIN_LD_LIB:-$(GOWIN_IDE_ROOT)/lib})
+GOWIN_QT_PLUGINS := $(shell echo $${GOWIN_QT_PLUGINS:-$(GOWIN_IDE_ROOT)/lib/Qt/plugins})
 GOWIN_PROJECT    ?= gowin/ether.gprj
 GOWIN_FLOW_TCL   ?= gowin/run_flow.tcl
 BITSTREAM_FS     ?= gowin/impl/pnr/ether.fs
