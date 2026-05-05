@@ -41,9 +41,9 @@ make sim-view         # Open GTKWave with latest VCD
 
 ## Verible Lint/Format (Verilog)
 
-Config files exist (`.verible-verilog-format.yaml`, `.rules.verible_lint`) but no pre-commit or CI enforcement. Run manually:
+No pre-commit or CI enforcement. Run manually:
 ```bash
-verible-verilog-format --files src/*.sv sim/iverilog/*.sv
+make format            # Format all SystemVerilog files
 verible-verilog-lint --ruleset .rules.verible_lint src/*.sv sim/iverilog/*.sv
 ```
 

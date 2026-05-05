@@ -25,8 +25,10 @@ VERILATOR_OBJ_DIR  ?= sim/verilator/obj_dir
 VERILATOR_BIN      ?= $(VERILATOR_OBJ_DIR)/V$(VERILATOR_TOP)
 VERILATOR_CFLAGS   += -CFLAGS "-O2 -Wall -Wextra"
 
+SV_FILES := $(shell find src sim -name '*.sv')
+
 .PHONY: all help check-tools check-sim-tools check-verilator-tools synth pnr impl write write-flash
-.PHONY: sim sim-iverilog sim-verilator sim-view clean
+.PHONY: sim sim-iverilog sim-verilator sim-view clean format
 
 all: impl
 
@@ -43,6 +45,7 @@ help:
 	@echo "  make sim-verilator - Run Verilator simulation"
 	@echo "  make sim-view      - Open GTKWave for latest VCD"
 	@echo "  make clean         - Remove simulation outputs"
+	@echo "  make format        - Format all SystemVerilog files with verible-verilog-format"
 	@echo ""
 	@echo "Useful overrides:"
 	@echo "  GW_SH              - Path to Gowin gw_sh"
@@ -115,6 +118,9 @@ sim-view:
 	elif [ -f "$(IVERILOG_VCD)" ]; then \
 		gtkwave "$(IVERILOG_VCD)" -A; \
 	fi
+
+format:
+	verible-verilog-format --inplace $(SV_FILES)
 
 clean:
 	rm -rf "$(VERILATOR_OBJ_DIR)" "$(VERILATOR_OUT_DIR)" "$(IVERILOG_OUT_DIR)"

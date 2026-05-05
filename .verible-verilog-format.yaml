@@ -1,9 +1,0 @@
-column_limit: 100
-indentation_spaces: 2
-line_break_penalty: 2
-over_column_limit_penalty: 100
-wrap_spaces: 2
-port_declarations_right_align_packed_dimensions: true
-named_parameter_indentation: indent
-named_port_indentation: indent
-formal_parameters_indentation: indent
