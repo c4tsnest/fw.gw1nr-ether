@@ -12,12 +12,12 @@ BOARD            ?= tangnano9k
 # ---- Icarus (iverilog) simulation ----
 IVERILOG_OUT_DIR  ?= sim/iverilog/out
 IVERILOG_TB       ?= sim/iverilog/tb_esc_minimal.sv
-IVERILOG_SRCS     ?= src/esc_al_fsm.sv src/esc_minimal_slave.sv
+IVERILOG_SRCS     ?= src/pkg/esc_pkg.sv src/if/esc_if.sv src/esc_al_fsm.sv src/esc_mii_rx.sv src/esc_mii_tx.sv src/esc_frame_parser.sv src/esc_crc.sv src/esc_regfile.sv src/esc_datagram_handler.sv src/esc_minimal_slave.sv
 IVERILOG_BIN      ?= $(IVERILOG_OUT_DIR)/esc_sim.out
 IVERILOG_VCD      ?= $(IVERILOG_OUT_DIR)/waveform.vcd
 
 # ---- Verilator simulation ----
-VERILATOR_SRCS     ?= src/esc_al_fsm.sv src/esc_minimal_slave.sv
+VERILATOR_SRCS     ?= src/pkg/esc_pkg.sv src/if/esc_if.sv src/esc_al_fsm.sv src/esc_mii_rx.sv src/esc_mii_tx.sv src/esc_frame_parser.sv src/esc_crc.sv src/esc_regfile.sv src/esc_datagram_handler.sv src/esc_minimal_slave.sv
 VERILATOR_TOP      ?= esc_minimal_slave
 VERILATOR_TB_CPP   ?= sim/verilator/tb_esc_minimal.cpp
 VERILATOR_OUT_DIR  ?= sim/verilator/out

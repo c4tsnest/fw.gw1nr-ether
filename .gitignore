@@ -5,6 +5,7 @@ gowin/impl/
 *.gtkw
 .envrc
 
+sim/out/
 sim/iverilog/out/
 sim/verilator/obj_dir/
 sim/verilator/out/

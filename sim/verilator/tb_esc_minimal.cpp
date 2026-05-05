@@ -61,8 +61,15 @@ static void clear_capture() {
 
 static void wait_tx_idle() {
   int idle_cycles = 0;
+  int max_cycles = 100000;
   while (idle_cycles < 12) {
     tick();
+    max_cycles--;
+    if (max_cycles <= 0) {
+      fprintf(stderr, "DBG: wait_tx_idle timed out, tx_en=%d, resp_len=%d\n",
+              (int)dut->tx_en, resp_len);
+      exit(1);
+    }
     if (dut->tx_en) {
       idle_cycles = 0;
     } else {
@@ -251,6 +258,9 @@ static void expect_fcs_valid(int frame_len, const char *name) {
 int main(int argc, char **argv) {
   int wkc_index;
 
+  setbuf(stdout, NULL);
+  setbuf(stderr, NULL);
+
   Verilated::commandArgs(argc, argv);
 
   dut = new Vesc_minimal_slave;
@@ -268,18 +278,25 @@ int main(int argc, char **argv) {
   dut->rx_dv = 0;
   clear_capture();
 
+  fprintf(stderr, "DBG: starting init ticks\n");
   for (int i = 0; i < 8; i++) tick();
+  fprintf(stderr, "DBG: reset done, releasing\n");
   dut->rst_n = 1;
   dut->link_up = 1;
   for (int i = 0; i < 8; i++) tick();
+  fprintf(stderr, "DBG: init complete\n");
 
   // ============================================================
   //  TEST1: APRD AL Status (expect INIT=0x01)
   // ============================================================
   printf("TEST1: APRD AL Status (expect INIT=0x01)\n");
   clear_capture();
+  fprintf(stderr, "DBG: sending frame\n");
   send_ecat_single_datagram(0x01, 0x0000, 0x0130, 1, 0x00, 0x00, 0x00, 0x00);
+  fprintf(stderr, "DBG: frame sent, waiting tx idle\n");
   wait_tx_idle();
+  fprintf(stderr, "DBG: tx idle, checking resp\n");
+  fprintf(stderr, "DBG: resp_len=%d\n", resp_len);
   expect_true(resp_len >= 29, "response length for APRD");
   expect_eq8(rx_resp[26], 0x01, "AL status byte");
   wkc_index = 27;
