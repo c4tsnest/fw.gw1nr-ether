@@ -1,48 +1,46 @@
 module esc_crc (
-    input  logic            clk,
-    input  logic            rst_n,
-    input  esc_pkg::byte_t  tx_byte,
-    input  logic            tx_byte_valid,
-    input  logic            crc_exclude,
-    input  logic            frame_start,
-    input  logic            frame_end,
-    esc_fifo_if.source      fifo_out
+    input logic              clk,
+    input logic              rst_n,
+    input esc_pkg::byte_t    tx_byte,
+    input logic              tx_byte_valid,
+    input logic              crc_exclude,
+    input logic              frame_start,
+    input logic              frame_end,
+          esc_fifo_if.source fifo_out
 );
 
   import esc_pkg::*;
 
-  logic [31:0] crc_reg;
-  byte_t fcs_delay [0:FCS_DELAY-1];
-  logic [$clog2(FCS_DELAY+1)-1:0] fcs_count;
-  logic       append_active;
-  logic [1:0] append_idx;
-  logic [31:0] append_value;
-  logic       frame_active;
+  logic  [                   31:0] crc_reg;
+  byte_t                           fcs_delay     [0:FCS_DELAY-1];
+  logic  [$clog2(FCS_DELAY+1)-1:0] fcs_count;
+  logic                            append_active;
+  logic  [                    1:0] append_idx;
+  logic  [                   31:0] append_value;
+  logic                            frame_active;
 
-  logic [31:0] crc_next;
-  int          bit_idx;
+  logic  [                   31:0] crc_next;
+  int                              bit_idx;
 
   always_comb begin
     crc_next = crc_reg;
     for (bit_idx = 0; bit_idx < 8; bit_idx++) begin
-      if ((crc_next[0] ^ fcs_delay[0][bit_idx]) == 1'b1)
-        crc_next = (crc_next >> 1) ^ CRC_POLY;
-      else
-        crc_next = crc_next >> 1;
+      if ((crc_next[0] ^ fcs_delay[0][bit_idx]) == 1'b1) crc_next = (crc_next >> 1) ^ CRC_POLY;
+      else crc_next = crc_next >> 1;
     end
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      crc_reg       <= CRC_INIT;
-      fcs_delay     <= '{default: '0};
-      fcs_count     <= '0;
-      append_active <= 1'b0;
-      append_idx    <= '0;
-      append_value  <= '0;
-      frame_active  <= 1'b0;
-      fifo_out.wr_en    <= 1'b0;
-      fifo_out.wr_data  <= '0;
+      crc_reg          <= CRC_INIT;
+      fcs_delay        <= '{default: '0};
+      fcs_count        <= '0;
+      append_active    <= 1'b0;
+      append_idx       <= '0;
+      append_value     <= '0;
+      frame_active     <= 1'b0;
+      fifo_out.wr_en   <= 1'b0;
+      fifo_out.wr_data <= '0;
     end else begin
       fifo_out.wr_en <= 1'b0;
 
@@ -68,7 +66,7 @@ module esc_crc (
 
         end else if (!fifo_out.full && frame_active) begin
           fifo_out.wr_data <= fcs_delay[0];
-          fifo_out.wr_en   <= 1'b1;
+          fifo_out.wr_en <= 1'b1;
 
           fcs_delay[0] <= fcs_delay[1];
           fcs_delay[1] <= fcs_delay[2];
@@ -88,10 +86,8 @@ module esc_crc (
         endcase
         fifo_out.wr_en <= 1'b1;
 
-        if (append_idx == 2'd3)
-          append_active <= 1'b0;
-        else
-          append_idx <= append_idx + 2'd1;
+        if (append_idx == 2'd3) append_active <= 1'b0;
+        else append_idx <= append_idx + 2'd1;
       end
     end
   end

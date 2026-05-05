@@ -4,9 +4,9 @@ module tb_esc_minimal;
 
   localparam int MAX_BYTES = 256;
 
-  logic clk;
-  logic rst_n;
-  logic link_up;
+  logic       clk;
+  logic       rst_n;
+  logic       link_up;
 
   logic [3:0] rxd;
   logic       rx_dv;
@@ -15,14 +15,14 @@ module tb_esc_minimal;
 
   logic [7:0] gpio_out;
 
-  logic [7:0] rx_resp[MAX_BYTES-1:0];
-  int resp_len;
-  logic cap_half;
+  logic [7:0] rx_resp        [MAX_BYTES-1:0];
+  int         resp_len;
+  logic       cap_half;
   logic [3:0] cap_low_nibble;
 
   esc_minimal_slave #(
       .GPIO_OUT_WIDTH(8),
-      .GPIO_IN_WIDTH(0)
+      .GPIO_IN_WIDTH (0)
   ) dut (
       .clk(clk),
       .rst_n(rst_n),
@@ -94,20 +94,14 @@ module tb_esc_minimal;
     end
   end
 
-  task automatic send_ecat_single_datagram(
-      input logic [7:0] cmd,
-      input logic [15:0] adp,
-      input logic [15:0] ado,
-      input int unsigned payload_len,
-      input logic [7:0] payload0,
-      input logic [7:0] payload1,
-      input logic [7:0] payload2,
-      input logic [7:0] payload3
-  );
+  task automatic send_ecat_single_datagram(input logic [7:0] cmd, input logic [15:0] adp,
+                                           input logic [15:0] ado, input int unsigned payload_len,
+                                           input logic [7:0] payload0, input logic [7:0] payload1,
+                                           input logic [7:0] payload2, input logic [7:0] payload3);
     logic [15:0] ecat_len;
     logic [15:0] dlen_field;
     begin
-      ecat_len = 16'(10 + payload_len + 2);
+      ecat_len   = 16'(10 + payload_len + 2);
       dlen_field = payload_len[15:0];
 
       send_byte(8'h01);
@@ -157,23 +151,14 @@ module tb_esc_minimal;
   endtask
 
   task automatic send_ecat_single_datagram8(
-      input logic [7:0] cmd,
-      input logic [15:0] adp,
-      input logic [15:0] ado,
-      input int unsigned payload_len,
-      input logic [7:0] payload0,
-      input logic [7:0] payload1,
-      input logic [7:0] payload2,
-      input logic [7:0] payload3,
-      input logic [7:0] payload4,
-      input logic [7:0] payload5,
-      input logic [7:0] payload6,
-      input logic [7:0] payload7
-  );
+      input logic [7:0] cmd, input logic [15:0] adp, input logic [15:0] ado,
+      input int unsigned payload_len, input logic [7:0] payload0, input logic [7:0] payload1,
+      input logic [7:0] payload2, input logic [7:0] payload3, input logic [7:0] payload4,
+      input logic [7:0] payload5, input logic [7:0] payload6, input logic [7:0] payload7);
     logic [15:0] ecat_len;
     logic [15:0] dlen_field;
     begin
-      ecat_len = 16'(10 + payload_len + 2);
+      ecat_len   = 16'(10 + payload_len + 2);
       dlen_field = payload_len[15:0];
 
       send_byte(8'h01);
@@ -227,16 +212,12 @@ module tb_esc_minimal;
   endtask
 
   task automatic send_ecat_single_datagram_with_preamble(
-      input logic [7:0] cmd,
-      input logic [15:0] adp,
-      input logic [15:0] ado,
-      input int unsigned payload_len,
-      input logic [7:0] payload0
-  );
+      input logic [7:0] cmd, input logic [15:0] adp, input logic [15:0] ado,
+      input int unsigned payload_len, input logic [7:0] payload0);
     logic [15:0] ecat_len;
     logic [15:0] dlen_field;
     begin
-      ecat_len = 16'(10 + payload_len + 2);
+      ecat_len   = 16'(10 + payload_len + 2);
       dlen_field = payload_len[15:0];
 
       send_byte(8'h55);
@@ -294,11 +275,7 @@ module tb_esc_minimal;
     end
   endtask
 
-  task automatic expect_eq8(
-      input logic [7:0] got,
-      input logic [7:0] exp,
-      input string name
-  );
+  task automatic expect_eq8(input logic [7:0] got, input logic [7:0] exp, input string name);
     begin
       if (got !== exp) begin
         $display("FAIL: %s got=%02x exp=%02x", name, got, exp);
@@ -307,10 +284,8 @@ module tb_esc_minimal;
     end
   endtask
 
-  function automatic logic [31:0] crc32_update_byte_tb(
-      input logic [31:0] crc_in,
-      input logic [7:0] data
-  );
+  function automatic logic [31:0] crc32_update_byte_tb(input logic [31:0] crc_in,
+                                                       input logic [7:0] data);
     logic [31:0] crc_next;
     int bit_idx;
     begin
@@ -349,8 +324,9 @@ module tb_esc_minimal;
       end
       crc_calc = ~crc_calc;
 
-      fcs_got = {rx_resp[frame_len - 1], rx_resp[frame_len - 2],
-                 rx_resp[frame_len - 3], rx_resp[frame_len - 4]};
+      fcs_got = {
+        rx_resp[frame_len-1], rx_resp[frame_len-2], rx_resp[frame_len-3], rx_resp[frame_len-4]
+      };
 
       if (fcs_got !== crc_calc) begin
         $display("FAIL: %s bad FCS got=%08x exp=%08x", name, fcs_got, crc_calc);
@@ -380,7 +356,7 @@ module tb_esc_minimal;
     clear_capture();
 
     repeat (8) @(posedge clk);
-    rst_n = 1'b1;
+    rst_n   = 1'b1;
     link_up = 1'b1;
     repeat (8) @(posedge clk);
 
@@ -464,17 +440,15 @@ module tb_esc_minimal;
 
     $display("TEST8: SOEM-like BWR reset block and FPRD verify");
     clear_capture();
-    send_ecat_single_datagram8(8'h08, 16'h0000, 16'h0800, 8,
-                   8'hAA, 8'h55, 8'h12, 8'h34,
-                   8'hDE, 8'hAD, 8'hBE, 8'hEF);
+    send_ecat_single_datagram8(8'h08, 16'h0000, 16'h0800, 8, 8'hAA, 8'h55, 8'h12, 8'h34, 8'hDE,
+                               8'hAD, 8'hBE, 8'hEF);
     wait_tx_idle();
     expect_true(resp_len >= 36, "response length for BWR 8-byte");
     expect_eq8(rx_resp[34], 8'h01, "WKC low BWR 8-byte");
 
     clear_capture();
-    send_ecat_single_datagram8(8'h04, 16'h1001, 16'h0800, 8,
-                   8'h00, 8'h00, 8'h00, 8'h00,
-                   8'h00, 8'h00, 8'h00, 8'h00);
+    send_ecat_single_datagram8(8'h04, 16'h1001, 16'h0800, 8, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+                               8'h00, 8'h00, 8'h00);
     wait_tx_idle();
     expect_true(resp_len >= 36, "response length for FPRD 8-byte");
     expect_eq8(rx_resp[26], 8'hAA, "FPRD block byte0");

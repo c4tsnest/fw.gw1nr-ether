@@ -74,14 +74,14 @@ module led #(
     end else begin
       if (blink_counter >= (BLINK_TOGGLE_TICKS - 1)) begin
         blink_counter <= 32'd0;
-        blink_phase <= ~blink_phase;
+        blink_phase   <= ~blink_phase;
       end else begin
         blink_counter <= blink_counter + 32'd1;
       end
 
       if (heartbeat_counter >= (HEARTBEAT_TOGGLE_TICKS - 1)) begin
         heartbeat_counter <= 32'd0;
-        heartbeat_phase <= ~heartbeat_phase;
+        heartbeat_phase   <= ~heartbeat_phase;
       end else begin
         heartbeat_counter <= heartbeat_counter + 32'd1;
       end
