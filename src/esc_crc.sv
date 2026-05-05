@@ -61,21 +61,22 @@ module esc_crc (
         frame_active  <= 1'b0;
       end
 
-      if (fcs_count < FCS_DELAY'(FCS_DELAY)) begin
-        fcs_delay[fcs_count] <= tx_byte;
-        fcs_count <= fcs_count + 1'b1;
-        if (tx_byte != 8'h00 || tx_byte_valid)
-          $display("CRC: fill[%0d] = %02x (valid=%b)", fcs_count, tx_byte, tx_byte_valid);
-      end else if (!fifo_out.full && frame_active) begin
-        fifo_out.wr_data <= fcs_delay[0];
-        fifo_out.wr_en   <= 1'b1;
+      if (tx_byte_valid) begin
+        if (fcs_count < FCS_DELAY'(FCS_DELAY)) begin
+          fcs_delay[fcs_count] <= tx_byte;
+          fcs_count <= fcs_count + 1'b1;
 
-        fcs_delay[0] <= fcs_delay[1];
-        fcs_delay[1] <= fcs_delay[2];
-        fcs_delay[2] <= fcs_delay[3];
-        fcs_delay[3] <= tx_byte;
+        end else if (!fifo_out.full && frame_active) begin
+          fifo_out.wr_data <= fcs_delay[0];
+          fifo_out.wr_en   <= 1'b1;
 
-        if (tx_byte_valid && !crc_exclude) crc_reg <= crc_next;
+          fcs_delay[0] <= fcs_delay[1];
+          fcs_delay[1] <= fcs_delay[2];
+          fcs_delay[2] <= fcs_delay[3];
+          fcs_delay[3] <= tx_byte;
+
+          if (!crc_exclude) crc_reg <= crc_next;
+        end
       end
 
       if (!fifo_out.full && append_active) begin

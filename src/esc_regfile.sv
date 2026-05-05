@@ -8,7 +8,7 @@ module esc_regfile #(
     esc_reg_if.slave                  reg_if,
     output logic [15:0]               station_addr,
     output esc_pkg::byte_t            gpio_out,
-    output logic [15:0]               debug_wkc_value
+    input  logic [15:0]               debug_wkc_value
 );
 
   import esc_pkg::*;
@@ -19,6 +19,8 @@ module esc_regfile #(
   byte_t reg_core [0:CORE_REG_BYTES-1];
   byte_t reg_sm   [0:SM_REG_BYTES-1];
   byte_t reg_fmmu [0:FMMU_REG_BYTES-1];
+
+  logic [GPIO_OUT_WIDTH-1:0] gpio_out_reg;
 
   word_t  reg_irq_mask;
   word_t  reg_eep_cfg;
@@ -69,7 +71,7 @@ module esc_regfile #(
     end else if ((a >= REG_DC_TIME) && (a < (REG_DC_TIME + 8))) begin
       reg_rd8 = dc_time_counter[((a - REG_DC_TIME) * 8) +: 8];
     end else if ((a >= REG_GPIO_OUT) && (a < (REG_GPIO_OUT + GPIO_OUT_BYTES))) begin
-      reg_rd8 = reg_core[a - '0];
+      reg_rd8 = gpio_out_reg[((a - REG_GPIO_OUT) * 8) +: 8];
     end else if ((GPIO_IN_WIDTH > 0) && (a >= REG_GPIO_IN) &&
                  (a < (REG_GPIO_IN + GPIO_IN_BYTES))) begin
       reg_rd8 = 8'h00;
@@ -114,7 +116,7 @@ module esc_regfile #(
     reg_if.rd_data = reg_rd8(reg_if.rd_addr);
   end
 
-  assign gpio_out = reg_core[REG_GPIO_OUT - '0];
+  assign gpio_out = byte_t'(gpio_out_reg);
   assign station_addr = {reg_core[REG_STATION_ADDR + 1], reg_core[REG_STATION_ADDR]};
 
   logic write_hit;
@@ -124,6 +126,8 @@ module esc_regfile #(
       for (i = 0; i < CORE_REG_BYTES; i++) reg_core[i] <= '0;
       for (i = 0; i < SM_REG_BYTES; i++)   reg_sm[i]   <= '0;
       for (i = 0; i < FMMU_REG_BYTES; i++) reg_fmmu[i] <= '0;
+
+      gpio_out_reg                      <= '0;
 
       reg_core[REG_TYPE]                <= 8'h11;
       reg_core[REG_TYPE + 1]            <= 8'h01;
@@ -254,7 +258,7 @@ module esc_regfile #(
 
         for (i = 0; i < GPIO_OUT_BYTES; i++) begin
           if (reg_if.wr_addr == (REG_GPIO_OUT + i)) begin
-            reg_core[reg_if.wr_addr - '0] <= reg_if.wr_data;
+            gpio_out_reg[(i * 8) +: 8] <= reg_if.wr_data;
           end
         end
       end

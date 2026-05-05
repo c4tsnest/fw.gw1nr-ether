@@ -5,7 +5,15 @@
     <Version>5</Version>
     <Device name="GW1NR-9C" pn="GW1NR-LV9QN88PC6/I5">gw1nr9c-004</Device>
     <FileList>
+        <File path="../src/pkg/esc_pkg.sv" type="file.verilog" enable="1" />
+        <File path="../src/if/esc_if.sv" type="file.verilog" enable="1" />
         <File path="../src/esc_al_fsm.sv" type="file.verilog" enable="1" />
+        <File path="../src/esc_mii_rx.sv" type="file.verilog" enable="1" />
+        <File path="../src/esc_mii_tx.sv" type="file.verilog" enable="1" />
+        <File path="../src/esc_frame_parser.sv" type="file.verilog" enable="1" />
+        <File path="../src/esc_crc.sv" type="file.verilog" enable="1" />
+        <File path="../src/esc_regfile.sv" type="file.verilog" enable="1" />
+        <File path="../src/esc_datagram_handler.sv" type="file.verilog" enable="1" />
         <File path="../src/esc_minimal_slave.sv" type="file.verilog" enable="1" />
         <File path="../src/led.sv" type="file.verilog" enable="1" />
         <File path="../src/top.sv" type="file.verilog" enable="1" />
