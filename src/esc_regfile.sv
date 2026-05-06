@@ -24,7 +24,7 @@ module esc_regfile #(
 
   word_t                      reg_irq_mask;
   word_t                      reg_eep_cfg;
-  word_t                      reg_eep_stat;
+  eep_stat_t                  eep_stat;
   logic  [              31:0] reg_eep_addr;
   logic  [              31:0] reg_eep_data;
   byte_t                      reg_pdi_control;
@@ -53,7 +53,7 @@ module esc_regfile #(
     end else if ((a >= REG_EEP_CFG) && (a < (REG_EEP_CFG + 2))) begin
       reg_rd8 = reg_eep_cfg[(a-REG_EEP_CFG)*8+:8];
     end else if ((a >= REG_EEP_STAT) && (a < (REG_EEP_STAT + 2))) begin
-      reg_rd8 = reg_eep_stat[(a-REG_EEP_STAT)*8+:8];
+      reg_rd8 = eep_stat.raw[(a-REG_EEP_STAT)*8+:8];
     end else if ((a >= REG_EEP_ADDR) && (a < (REG_EEP_ADDR + 4))) begin
       reg_rd8 = reg_eep_addr[(a-REG_EEP_ADDR)*8+:8];
     end else if ((a >= REG_EEP_DATA) && (a < (REG_EEP_DATA + 4))) begin
@@ -150,7 +150,7 @@ module esc_regfile #(
       dc_time_counter        <= 64'd0;
       reg_irq_mask           <= '0;
       reg_eep_cfg            <= '0;
-      reg_eep_stat           <= '0;
+      eep_stat.raw           <= '0;
       reg_eep_addr           <= '0;
       reg_eep_data           <= '0;
       eep_busy_count         <= '0;
@@ -167,15 +167,17 @@ module esc_regfile #(
 
       if (eep_busy_count != 4'd0) begin
         eep_busy_count   <= eep_busy_count - 4'd1;
-        reg_eep_stat[15] <= 1'b1;
+        eep_stat.fields.busy <= 1'b1;
         if (eep_busy_count == 4'd1) begin
-          reg_eep_stat[15] <= 1'b0;
+          eep_stat.fields.busy <= 1'b0;
           if (eep_cmd_pending) begin
-            if (reg_eep_stat[10:8] == 3'b001) begin
-              reg_eep_data <= eeprom_fixed_read(reg_eep_addr);
-            end
-            eep_cmd_pending <= 1'b0;
-            reg_eep_stat[0] <= 1'b0;
+            case (eep_stat.fields.command)
+              3'b001: reg_eep_data <= eeprom_fixed_read(reg_eep_addr); // Read
+              3'b010: ; // TODO: Write command - store to embedded flash
+              default: ; // Reserved / no-op
+            endcase
+            eep_cmd_pending       <= 1'b0;
+            eep_stat.fields.command <= 3'b000;
           end
         end
       end
@@ -213,15 +215,16 @@ module esc_regfile #(
                        (reg_if.wr_addr < (REG_EEP_STAT + 2))) begin
             if (reg_eep_cfg[8] == 1'b0) begin
               if (reg_if.wr_addr == REG_EEP_STAT) begin
-                reg_eep_stat[0] <= reg_if.wr_data[0];
-                if (reg_if.wr_data[0] && !reg_eep_stat[15]) begin
-                  reg_eep_stat[15] <= 1'b1;
-                  eep_busy_count   <= 4'd8;
-                  eep_cmd_pending  <= 1'b1;
-                end
+                eep_stat.fields.ecat_we <= reg_if.wr_data[0];
                 write_hit = 1'b1;
               end else begin
-                reg_eep_stat[10:8] <= reg_if.wr_data[2:0];
+                // REG_EEP_STAT + 1: upper byte carries command type in bits [2:0]
+                eep_stat.fields.command <= reg_if.wr_data[2:0];
+                if ((reg_if.wr_data[2:0] != 3'b000) && !eep_stat.fields.busy) begin
+                  eep_stat.fields.busy <= 1'b1;
+                  eep_busy_count       <= 4'd8;
+                  eep_cmd_pending      <= 1'b1;
+                end
                 write_hit = 1'b1;
               end
             end

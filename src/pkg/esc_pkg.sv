@@ -67,6 +67,20 @@ package esc_pkg;
 
   localparam word_t DLSTATUS_PORT0_LINK = 16'h0200;
 
+  /** EEPROM Status register (0x0502) bitfields */
+  typedef struct packed {
+    logic busy;             // bit 15
+    logic [3:0] reserved_hi; // bits 14:11
+    logic [2:0] command;    // bits 10:8
+    logic [6:0] reserved_lo; // bits 7:1
+    logic ecat_we;          // bit 0
+  } eep_stat_fields_t;
+
+  typedef union packed {
+    word_t raw;
+    eep_stat_fields_t fields;
+  } eep_stat_t;
+
   localparam byte_t ETHERTYPE_HI = 8'h88;
   localparam byte_t ETHERTYPE_LO = 8'hA4;
   localparam byte_t PREAMBLE_BYTE = 8'h55;
