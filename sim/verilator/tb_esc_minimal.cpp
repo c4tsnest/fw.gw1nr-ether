@@ -572,6 +572,60 @@ int main(int argc, char **argv) {
   expect_eq8(rx_resp[29], 0x00, "EEP_DATA byte3");
   expect_eq8(rx_resp[30], 0x01, "WKC low APRD EEP_DATA");
 
+  // ============================================================
+  //  TEST16: SOEM-style 6-byte FPWR to 0x0502 for EEPROM read
+  //  Uses FPWR/FPRD with station address 0x1001 like real SOEM
+  // ============================================================
+  printf("TEST16: SOEM-style 6-byte FPWR to 0x0502 for EEPROM read\n");
+
+  // First, write station address 0x1001 to 0x0010 using APWR (ADP=0)
+  clear_capture();
+  send_ecat_single_datagram(0x02, 0x0000, 0x0010, 2, 0x01, 0x10, 0x00, 0x00);
+  wait_tx_idle();
+  expect_eq8(rx_resp[28], 0x01, "WKC low APWR station addr");
+
+  // Now use FPWR with ADP=0x1001 to write 6 bytes to EEPROM registers
+  clear_capture();
+  send_ecat_single_datagram8(0x05, 0x1001, 0x0502, 6,
+                             0x01,  // 0x0502: ecat_we=1
+                             0x01,  // 0x0503: command=001 (read)
+                             0x01,  // 0x0504: EEP_ADDR[7:0] = 1
+                             0x00,  // 0x0505: EEP_ADDR[15:8] = 0
+                             0x00,  // 0x0506: EEP_ADDR[23:16] = 0
+                             0x00,  // 0x0507: EEP_ADDR[31:24] = 0
+                             0x00, 0x00);
+  wait_tx_idle();
+  expect_eq8(rx_resp[32], 0x01, "WKC low FPWR EEP 6-byte");
+
+  for (int i = 0; i < 32; i++) tick();
+
+  // Verify EEP_STAT shows busy cleared and command=000
+  clear_capture();
+  send_ecat_single_datagram(0x04, 0x1001, 0x0502, 2, 0x00, 0x00, 0x00, 0x00);
+  wait_tx_idle();
+  expect_true((rx_resp[27] & 0x80) == 0, "EEP_STAT busy cleared");
+  expect_eq8((rx_resp[27] & 0x07), 0x00, "EEP_STAT command cleared");
+
+  // Verify EEP_ADDR set correctly in the same burst
+  clear_capture();
+  send_ecat_single_datagram(0x04, 0x1001, 0x0504, 4, 0x00, 0x00, 0x00, 0x00);
+  wait_tx_idle();
+  expect_eq8(rx_resp[26], 0x01, "EEP_ADDR byte0");
+  expect_eq8(rx_resp[27], 0x00, "EEP_ADDR byte1");
+  expect_eq8(rx_resp[28], 0x00, "EEP_ADDR byte2");
+  expect_eq8(rx_resp[29], 0x00, "EEP_ADDR byte3");
+  expect_eq8(rx_resp[30], 0x01, "WKC low FPRD EEP_ADDR");
+
+  // Read back EEP_DATA using FPRD
+  clear_capture();
+  send_ecat_single_datagram(0x04, 0x1001, 0x0508, 4, 0x00, 0x00, 0x00, 0x00);
+  wait_tx_idle();
+  expect_eq8(rx_resp[26], 0x01, "EEP_DATA byte0");
+  expect_eq8(rx_resp[27], 0x00, "EEP_DATA byte1");
+  expect_eq8(rx_resp[28], 0x01, "EEP_DATA byte2");
+  expect_eq8(rx_resp[29], 0x00, "EEP_DATA byte3");
+  expect_eq8(rx_resp[30], 0x01, "WKC low FPRD EEP_DATA");
+
   printf("PASS: minimal ESC tests completed\n");
 
   for (int i = 0; i < 20; i++) tick();

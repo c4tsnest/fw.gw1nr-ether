@@ -160,25 +160,24 @@ module esc_regfile #(
 
       al_req_valid           <= 1'b0;
       al_req_state           <= '0;
-    end else begin
+end else begin
       dc_time_counter <= dc_time_counter + 64'd1;
       al_req_valid    <= 1'b0;
       reg_if.wr_ack   <= 1'b0;
 
-      if (eep_busy_count != 4'd0) begin
+      if (eep_busy_count > 4'd1) begin
         eep_busy_count   <= eep_busy_count - 4'd1;
         eep_stat.fields.busy <= 1'b1;
-        if (eep_busy_count == 4'd1) begin
-          eep_stat.fields.busy <= 1'b0;
-          if (eep_cmd_pending) begin
-            case (eep_stat.fields.command)
-              3'b001: reg_eep_data <= eeprom_fixed_read(reg_eep_addr); // Read
-              3'b010: ; // TODO: Write command - store to embedded flash
-              default: ; // Reserved / no-op
-            endcase
-            eep_cmd_pending       <= 1'b0;
-            eep_stat.fields.command <= 3'b000;
-          end
+      end else if (eep_busy_count == 4'd1) begin
+        eep_stat.fields.busy <= 1'b0;
+        if (eep_cmd_pending) begin
+          case (eep_stat.fields.command)
+            3'b001: reg_eep_data <= eeprom_fixed_read(reg_eep_addr);
+            3'b010: ;
+            default: ;
+          endcase
+          eep_cmd_pending       <= 1'b0;
+          eep_stat.fields.command <= 3'b000;
         end
       end
 

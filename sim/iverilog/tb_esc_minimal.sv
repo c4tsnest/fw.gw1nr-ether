@@ -597,6 +597,55 @@ module tb_esc_minimal;
     expect_eq8(rx_resp[29], 8'h00, "EEP_DATA byte3");
     expect_eq8(rx_resp[30], 8'h01, "WKC low APRD EEP_DATA");
 
+    $display("TEST16: SOEM-style 6-byte FPWR to 0x0502 for EEPROM read");
+    // First write station address 0x1001 to 0x0010 using APWR
+    clear_capture();
+    send_ecat_single_datagram(8'h02, 16'h0000, 16'h0010, 2, 8'h01, 8'h10, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[28], 8'h01, "WKC low APWR station addr");
+
+    // Now use FPWR with ADP=0x1001 for EEPROM command
+    clear_capture();
+    send_ecat_single_datagram8(8'h05, 16'h1001, 16'h0502, 6,
+                               8'h01,  // 0x0502: ecat_we=1
+                               8'h01,  // 0x0503: command=001 (read)
+                               8'h01,  // 0x0504: EEP_ADDR[7:0] = 1
+                               8'h00,  // 0x0505: EEP_ADDR[15:8] = 0
+                               8'h00,  // 0x0506: EEP_ADDR[23:16] = 0
+                               8'h00,  // 0x0507: EEP_ADDR[31:24] = 0
+                               8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[32], 8'h01, "WKC low FPWR EEP 6-byte");
+
+    repeat (32) @(posedge clk);
+
+    // Verify EEP_STAT shows busy cleared and command=000
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0502, 2, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_true((rx_resp[27] & 8'h80) == 8'h00, "EEP_STAT busy cleared");
+    expect_eq8((rx_resp[27] & 8'h07), 8'h00, "EEP_STAT command cleared");
+
+    // Verify EEP_ADDR set correctly in the same burst
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0504, 4, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h01, "EEP_ADDR byte0");
+    expect_eq8(rx_resp[27], 8'h00, "EEP_ADDR byte1");
+    expect_eq8(rx_resp[28], 8'h00, "EEP_ADDR byte2");
+    expect_eq8(rx_resp[29], 8'h00, "EEP_ADDR byte3");
+    expect_eq8(rx_resp[30], 8'h01, "WKC low FPRD EEP_ADDR");
+
+    // Read back EEP_DATA using FPRD
+    clear_capture();
+    send_ecat_single_datagram(8'h04, 16'h1001, 16'h0508, 4, 8'h00, 8'h00, 8'h00, 8'h00);
+    wait_tx_idle();
+    expect_eq8(rx_resp[26], 8'h01, "EEP_DATA byte0");
+    expect_eq8(rx_resp[27], 8'h00, "EEP_DATA byte1");
+    expect_eq8(rx_resp[28], 8'h01, "EEP_DATA byte2");
+    expect_eq8(rx_resp[29], 8'h00, "EEP_DATA byte3");
+    expect_eq8(rx_resp[30], 8'h01, "WKC low FPRD EEP_DATA");
+
     $display("PASS: minimal ESC tests completed");
     repeat (20) @(posedge clk);
     $finish;
