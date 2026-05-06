@@ -249,7 +249,9 @@ end else begin
 
         if (reg_if.wr_addr == REG_AL_CONTROL) begin
           al_req_state <= reg_if.wr_data[3:0];
-          al_req_valid <= 1'b1;
+          if (al_state != reg_if.wr_data[3:0]) begin
+            al_req_valid <= 1'b1;
+          end
         end
 
         for (i = 0; i < GPIO_OUT_BYTES; i++) begin

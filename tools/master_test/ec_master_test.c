@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
   int state_timeout = 2000000;
 
   context.slavelist[0].state = EC_STATE_INIT;
-  ecx_writestate(&context, slave);
+  ecx_writestate(&context, 0);
   st = ecx_statecheck(&context, slave, EC_STATE_INIT, state_timeout);
   if (st == EC_STATE_INIT) {
     printf("  INIT:     OK\n");
@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
   }
 
   context.slavelist[0].state = EC_STATE_PRE_OP;
-  ecx_writestate(&context, slave);
+  ecx_writestate(&context, 0);
   st = ecx_statecheck(&context, slave, EC_STATE_PRE_OP, state_timeout);
   if (st == EC_STATE_PRE_OP) {
     printf("  PREOP:    OK\n");
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
   }
 
   context.slavelist[0].state = EC_STATE_SAFE_OP;
-  ecx_writestate(&context, slave);
+  ecx_writestate(&context, 0);
   st = ecx_statecheck(&context, slave, EC_STATE_SAFE_OP, state_timeout);
   if (st == EC_STATE_SAFE_OP) {
     printf("  SAFEOP:   OK\n");
@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
   }
 
   context.slavelist[0].state = EC_STATE_OPERATIONAL;
-  ecx_writestate(&context, slave);
+  ecx_writestate(&context, 0);
   st = ecx_statecheck(&context, slave, EC_STATE_OPERATIONAL, state_timeout);
   if (st == EC_STATE_OPERATIONAL) {
     printf("  OP:        OK\n");
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 
   printf("\n  Returning to INIT...\n");
   context.slavelist[0].state = EC_STATE_INIT;
-  ecx_writestate(&context, slave);
+  ecx_writestate(&context, 0);
   ecx_statecheck(&context, slave, EC_STATE_INIT, state_timeout);
 
   printf("\n=== Test Complete ===\n");
