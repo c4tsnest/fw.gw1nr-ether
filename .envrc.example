@@ -1,0 +1,4 @@
+export PATH="$HOME/.local/bin:$PATH"
+if [ -d "$(git rev-parse --show-toplevel)/tools/scripts/.venv" ]; then
+    source "$(git rev-parse --show-toplevel)/tools/scripts/.venv/bin/activate"
+fi

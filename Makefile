@@ -28,7 +28,7 @@ VERILATOR_CFLAGS   += -CFLAGS "-O2 -Wall -Wextra"
 SV_FILES := $(shell find src sim -name '*.sv')
 
 .PHONY: all help check-tools check-sim-tools check-verilator-tools synth pnr impl write write-flash
-.PHONY: sim sim-iverilog sim-verilator sim-view clean format
+.PHONY: sim sim-iverilog sim-verilator sim-view clean format tools master-test clean-tools
 
 all: impl
 
@@ -46,6 +46,9 @@ help:
 	@echo "  make sim-view      - Open GTKWave for latest VCD"
 	@echo "  make clean         - Remove simulation outputs"
 	@echo "  make format        - Format all SystemVerilog files with verible-verilog-format"
+	@echo ""
+	@echo "  make tools         - Build SOEM master test executable"
+	@echo "  make clean-tools   - Remove tools build artifacts"
 	@echo ""
 	@echo "Useful overrides:"
 	@echo "  GW_SH              - Path to Gowin gw_sh"
@@ -122,8 +125,24 @@ sim-view:
 format:
 	verible-verilog-format --inplace $(SV_FILES)
 
-clean:
+SOEM_DIR := $(CURDIR)/tools/soem
+SOEM_BUILD := $(SOEM_DIR)/build
+SOEM_LIB := $(SOEM_BUILD)/libsoem.a
+
+tools: master-test
+
+master-test: $(SOEM_LIB)
+	$(MAKE) -C tools/master_test
+
+$(SOEM_LIB):
+	@mkdir -p $(SOEM_BUILD)
+	cd $(SOEM_BUILD) && cmake .. -DCMAKE_BUILD_TYPE=Release && $(MAKE)
+
+clean: clean-tools
 	rm -rf "$(VERILATOR_OBJ_DIR)" "$(VERILATOR_OUT_DIR)" "$(IVERILOG_OUT_DIR)"
+
+clean-tools:
+	rm -rf tools/soem/build tools/master_test/ec_master_test
 
 # Keep backward-compatible aliases for old paths
 check-sim-tools: check-iverilog-tools

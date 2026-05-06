@@ -62,6 +62,50 @@ Two simulation backends are supported:
 
 Both testbenches cover the same 15 tests using 4-bit `rxd` half-byte serialization (byte = {rxd[7:4], rxd[3:0]}).
 
+## Hardware Testing (SOEM Master Test)
+
+Test the FPGA-implemented ESC with a host-side SOEM master.
+
+### Prerequisites
+- `cmake`, `build-essential` (gcc/clang, make)
+- SOEM source at `tools/soem/` (run `git submodule update --init --recursive`)
+
+### Build
+```bash
+make tools
+```
+This builds the SOEM static library and produces `tools/master_test/ec_master_test`.
+
+### Run
+```bash
+sudo ./tools/master_test/ec_master_test eth0
+```
+(requires root or CAP_NET_RAW for raw EtherCAT sockets)
+
+### Frame Capture & Inspection
+```bash
+# Terminal A: capture
+sudo tcpdump -i eth0 -w tools/captures/run.pcap ether proto 0x88a4
+
+# Terminal B: run master test
+sudo ./tools/master_test/ec_master_test eth0
+
+# After capture is stopped (Ctrl-C in Terminal A):
+python3 tools/scripts/pcap2ethercat.py tools/captures/run.pcap
+```
+
+### Clean
+```bash
+make clean-tools    # remove SOEM build artifacts and ec_master_test binary
+make clean          # clean-tools + simulation outputs
+```
+
+### Python Environment (optional)
+```bash
+uv venv tools/scripts/.venv
+source .envrc.example   # or: source tools/scripts/.venv/bin/activate
+```
+
 ## No CI/Lint Enforcement
 
 This repo has no automated lint checks, no pre-commit hooks, and no GitHub Actions. Manual verification only.
